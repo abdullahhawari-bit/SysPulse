@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // ============================================================================
-// STORAGE VAULT DOMAIN MODELS & CLOUD ARCHIVER
+// STORAGE VAULT DOMAIN MODELS & CLOUD ARCHIVER (ENGLISH)
 // ============================================================================
 
 enum VaultFileCategory {
@@ -14,22 +14,22 @@ enum VaultFileCategory {
   archive,
   other;
 
-  String get displayNameAr {
+  String get displayName {
     switch (this) {
       case VaultFileCategory.image:
-        return 'الصور';
+        return 'Photos';
       case VaultFileCategory.video:
-        return 'الفيديوهات';
+        return 'Videos';
       case VaultFileCategory.audio:
-        return 'الصوتيات';
+        return 'Audio';
       case VaultFileCategory.document:
-        return 'المستندات';
+        return 'Documents';
       case VaultFileCategory.apk:
-        return 'حزم التطبيقات';
+        return 'APKs';
       case VaultFileCategory.archive:
-        return 'الملفات المضغوطة';
+        return 'Archives';
       case VaultFileCategory.other:
-        return 'أخرى';
+        return 'Other';
     }
   }
 
@@ -63,7 +63,7 @@ enum VaultFileCategory {
       case VaultFileCategory.document:
         return const Color(0xFF10B981); // Emerald
       case VaultFileCategory.apk:
-        return const Color(0xFFFB7185); // Rose / Coral
+        return const Color(0xFFFB7185); // Rose
       case VaultFileCategory.archive:
         return const Color(0xFF6366F1); // Indigo
       case VaultFileCategory.other:
@@ -77,14 +77,14 @@ enum CloudProvider {
   oneDrive,
   systemShare;
 
-  String get displayNameAr {
+  String get displayName {
     switch (this) {
       case CloudProvider.googleDrive:
         return 'Google Drive';
       case CloudProvider.oneDrive:
         return 'Microsoft OneDrive';
       case CloudProvider.systemShare:
-        return 'مشاركة سحابية عامة';
+        return 'System Share Sheet';
     }
   }
 
@@ -149,11 +149,11 @@ class VaultFileItem {
     return '${(sizeBytes / (1024 * 1024 * 1024)).toStringAsFixed(2)} GB';
   }
 
-  String get formattedAgeDays {
+  String get formattedAge {
     final days = DateTime.now().difference(lastModified).inDays;
-    if (days == 0) return 'اليوم';
-    if (days == 1) return 'أمس';
-    return 'منذ $days يوماً';
+    if (days <= 0) return 'Today';
+    if (days == 1) return 'Yesterday';
+    return '${days}d ago';
   }
 }
 
@@ -184,7 +184,6 @@ class StorageVaultSummary {
     var waste = 0;
     for (final group in duplicateGroups) {
       if (group.length > 1) {
-        // Waste is all copies except 1 original
         for (var i = 1; i < group.length; i++) {
           waste += group[i].sizeBytes;
         }
@@ -235,7 +234,7 @@ class ArchiveCompressionResult {
 }
 
 // ============================================================================
-// STORAGE VAULT SERVICE (NATIVE METHOD CHANNEL + PREVIEW FALLBACK)
+// STORAGE VAULT SERVICE
 // ============================================================================
 
 class StorageVaultService {
@@ -245,8 +244,6 @@ class StorageVaultService {
   static const MethodChannel _channel =
       MethodChannel('com.syspulse.mobile/telemetry');
 
-  /// Scans device storage for categorized files, duplicate hash candidates,
-  /// and stale cold-storage items.
   Future<StorageVaultSummary> scanStorage({int staleDays = 60}) async {
     try {
       final raw = await _channel.invokeMapMethod<String, dynamic>(
@@ -256,15 +253,12 @@ class StorageVaultService {
       if (raw != null && raw['success'] == true) {
         return _parseNativeSummary(raw, staleDays);
       }
-    } catch (_) {
-      // Fallback to high-fidelity preview dataset
-    }
+    } catch (_) {}
 
     await Future<void>.delayed(const Duration(milliseconds: 320));
     return _generateMockSummary(staleDays);
   }
 
-  /// Compresses chosen files into a timestamped local ZIP archive.
   Future<ArchiveCompressionResult> compressFiles(
     List<VaultFileItem> files, {
     String? archiveName,
@@ -296,14 +290,13 @@ class StorageVaultService {
     final compressedMock = (totalOriginal * 0.62).toInt();
     return ArchiveCompressionResult(
       archivePath: '/storage/emulated/0/Download/SysPulse_Archive.zip',
-      archiveName: archiveName ?? 'SysPulse_Vault_Archive.zip',
+      archiveName: archiveName ?? 'SysPulse_Archive.zip',
       originalBytes: totalOriginal,
       compressedBytes: compressedMock,
       filesCount: files.length,
     );
   }
 
-  /// Exports the created ZIP archive to Google Drive, OneDrive, or Cloud Share Sheet.
   Future<bool> exportToCloud(String archivePath, CloudProvider provider) async {
     try {
       final ok = await _channel.invokeMethod<bool>(
@@ -320,7 +313,6 @@ class StorageVaultService {
     }
   }
 
-  /// Safely removes archived files from the device storage.
   Future<Map<String, dynamic>> deleteArchivedFiles(
       List<VaultFileItem> files) async {
     final paths = files.map((f) => f.path).toList();
@@ -345,10 +337,6 @@ class StorageVaultService {
       'freedBytes': totalFreed,
     };
   }
-
-  // --------------------------------------------------------------------------
-  // PARSERS & PREVIEW GENERATORS
-  // --------------------------------------------------------------------------
 
   StorageVaultSummary _parseNativeSummary(
       Map<String, dynamic> raw, int staleDays) {
@@ -454,15 +442,13 @@ class StorageVaultService {
 
   StorageVaultSummary _generateMockSummary(int staleDays) {
     final now = DateTime.now();
-
     final mockItems = [
-      // Duplicates Group 1: WhatsApp Video Duplicate
       VaultFileItem(
         id: 'dup_vid_1',
-        name: 'VID_20260714_FamilyTrip.mp4',
-        path: '/storage/emulated/0/DCIM/Camera/VID_20260714_FamilyTrip.mp4',
+        name: 'VID_20250203_Trip.mp4',
+        path: '/storage/emulated/0/DCIM/Camera/VID_20250203_Trip.mp4',
         sizeBytes: 184 * 1024 * 1024,
-        lastModified: now.subtract(const Duration(days: 95)),
+        lastModified: now.subtract(const Duration(days: 634)),
         category: VaultFileCategory.video,
         hash: 'a1b2c3d4e5f6',
         duplicateGroupId: 'g1',
@@ -472,10 +458,10 @@ class StorageVaultService {
       ),
       VaultFileItem(
         id: 'dup_vid_2',
-        name: 'VID_20260714_FamilyTrip_copy.mp4',
-        path: '/storage/emulated/0/WhatsApp/Media/VID_20260714_FamilyTrip_copy.mp4',
+        name: 'VID_20250203_Trip_copy.mp4',
+        path: '/storage/emulated/0/WhatsApp/Media/VID_20250203_Trip_copy.mp4',
         sizeBytes: 184 * 1024 * 1024,
-        lastModified: now.subtract(const Duration(days: 90)),
+        lastModified: now.subtract(const Duration(days: 620)),
         category: VaultFileCategory.video,
         hash: 'a1b2c3d4e5f6',
         duplicateGroupId: 'g1',
@@ -483,94 +469,11 @@ class StorageVaultService {
         isStale: true,
         isLarge: true,
       ),
-
-      // Duplicates Group 2: Large PDF Contract Duplicate
-      VaultFileItem(
-        id: 'dup_pdf_1',
-        name: 'Financial_Asset_Valuation_Manual_2026.pdf',
-        path: '/storage/emulated/0/Download/Financial_Asset_Valuation_Manual_2026.pdf',
-        sizeBytes: 42 * 1024 * 1024,
-        lastModified: now.subtract(const Duration(days: 82)),
-        category: VaultFileCategory.document,
-        hash: 'f9e8d7c6b5a4',
-        duplicateGroupId: 'g2',
-        isDuplicateCopy: false,
-        isStale: true,
-      ),
-      VaultFileItem(
-        id: 'dup_pdf_2',
-        name: 'Financial_Asset_Valuation_Manual_2026(1).pdf',
-        path: '/storage/emulated/0/Documents/Financial_Asset_Valuation_Manual_2026(1).pdf',
-        sizeBytes: 42 * 1024 * 1024,
-        lastModified: now.subtract(const Duration(days: 80)),
-        category: VaultFileCategory.document,
-        hash: 'f9e8d7c6b5a4',
-        duplicateGroupId: 'g2',
-        isDuplicateCopy: true,
-        isStale: true,
-      ),
-
-      // Old Uninstalled APKs (Stale)
-      VaultFileItem(
-        id: 'apk_old_1',
-        name: 'flutter_windows_3.29.0_archive.apk',
-        path: '/storage/emulated/0/Download/flutter_windows_3.29.0_archive.apk',
-        sizeBytes: 112 * 1024 * 1024,
-        lastModified: now.subtract(const Duration(days: 75)),
-        category: VaultFileCategory.apk,
-        isStale: true,
-        isLarge: true,
-      ),
-      VaultFileItem(
-        id: 'apk_old_2',
-        name: 'Accounting_Toolkit_Beta.apk',
-        path: '/storage/emulated/0/Download/Accounting_Toolkit_Beta.apk',
-        sizeBytes: 68 * 1024 * 1024,
-        lastModified: now.subtract(const Duration(days: 120)),
-        category: VaultFileCategory.apk,
-        isStale: true,
-        isLarge: true,
-      ),
-
-      // Dormant Photos (Stale)
-      VaultFileItem(
-        id: 'photo_stale_1',
-        name: 'IMG_20260401_092144.jpg',
-        path: '/storage/emulated/0/DCIM/Camera/IMG_20260401_092144.jpg',
-        sizeBytes: 8 * 1024 * 1024,
-        lastModified: now.subtract(const Duration(days: 140)),
-        category: VaultFileCategory.image,
-        isStale: true,
-      ),
-      VaultFileItem(
-        id: 'photo_stale_2',
-        name: 'IMG_20260402_113012.jpg',
-        path: '/storage/emulated/0/DCIM/Camera/IMG_20260402_113012.jpg',
-        sizeBytes: 9 * 1024 * 1024,
-        lastModified: now.subtract(const Duration(days: 139)),
-        category: VaultFileCategory.image,
-        isStale: true,
-      ),
-
-      // Large Video (Not Duplicate, but Large)
-      VaultFileItem(
-        id: 'vid_large_1',
-        name: 'Conference_Keynote_Recording_4K.mp4',
-        path: '/storage/emulated/0/Movies/Conference_Keynote_Recording_4K.mp4',
-        sizeBytes: 840 * 1024 * 1024,
-        lastModified: now.subtract(const Duration(days: 45)),
-        category: VaultFileCategory.video,
-        isLarge: true,
-      ),
     ];
 
     final dupGroups = [
       [mockItems[0], mockItems[1]],
-      [mockItems[2], mockItems[3]],
     ];
-
-    final staleFiles = mockItems.where((i) => i.isStale).toList();
-    final largeFiles = mockItems.where((i) => i.isLarge).toList();
 
     final catBytes = <VaultFileCategory, int>{
       VaultFileCategory.image: 24 * 1024 * 1024 * 1024,
@@ -599,8 +502,8 @@ class StorageVaultService {
       categoryBytes: catBytes,
       categoryCounts: catCounts,
       duplicateGroups: dupGroups,
-      staleFiles: staleFiles,
-      largeFiles: largeFiles,
+      staleFiles: mockItems,
+      largeFiles: mockItems,
       allFiles: mockItems,
     );
   }

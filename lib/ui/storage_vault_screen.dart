@@ -12,7 +12,7 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
   final StorageVaultService _service = StorageVaultService.instance;
   StorageVaultSummary? _summary;
   bool _loading = true;
-  int _staleDays = 60;
+  final int _staleDays = 60;
   String _activeTab = 'duplicates'; // 'duplicates', 'stale', 'large', 'all'
   final Set<String> _selectedFileIds = {};
 
@@ -29,7 +29,6 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     setState(() {
       _summary = data;
       _loading = false;
-      // Automatically select duplicate copies by default for user convenience
       _autoSelectDuplicates(data);
     });
   }
@@ -111,7 +110,7 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     if (selectedFiles.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('الرجاء تحديد ملف واحد على الأقل للأرشفة والترحيل'),
+          content: Text('Please select at least one file to archive.'),
         ),
       );
       return;
@@ -120,7 +119,7 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
-      backgroundColor: const Color(0xFF0F172A),
+      backgroundColor: const Color(0xFF0B132B),
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
@@ -137,24 +136,36 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF020617),
+      backgroundColor: const Color(0xFF030712),
       appBar: AppBar(
-        backgroundColor: const Color(0xFF020617),
+        backgroundColor: const Color(0xFF030712),
         elevation: 0,
-        title: const Text(
-          'خزنة التخزين والأرشفة السحابية',
-          style: TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
+        titleSpacing: 16,
+        title: const Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Storage Vault & Archiver',
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: Colors.white,
+                letterSpacing: -0.3,
+              ),
+            ),
+            Text(
+              'Duplicate Cleaner & Cloud Backup',
+              style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+            ),
+          ],
         ),
         actions: [
           IconButton(
-            tooltip: 'إعادة فحص التخزين',
-            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF38BDF8)),
+            tooltip: 'Rescan Storage',
+            icon: const Icon(Icons.refresh_rounded, color: Color(0xFF38BDF8), size: 22),
             onPressed: _loadVaultData,
           ),
+          const SizedBox(width: 4),
         ],
       ),
       body: _loading || _summary == null
@@ -164,14 +175,14 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
           : Stack(
               children: [
                 ListView(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 100),
+                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 115),
                   children: [
-                    _buildStorageOverviewCard(_summary!),
-                    const SizedBox(height: 16),
-                    _buildPillSelector(),
-                    const SizedBox(height: 14),
-                    _buildActionHeader(),
+                    _buildCompactOverviewCard(_summary!),
                     const SizedBox(height: 12),
+                    _buildTabPills(),
+                    const SizedBox(height: 12),
+                    _buildSectionHeader(),
+                    const SizedBox(height: 8),
                     ..._buildFileList(),
                   ],
                 ),
@@ -181,24 +192,17 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     );
   }
 
-  Widget _buildStorageOverviewCard(StorageVaultSummary s) {
+  Widget _buildCompactOverviewCard(StorageVaultSummary s) {
     final usedGb = (s.usedBytes / (1024 * 1024 * 1024)).toStringAsFixed(1);
     final totalGb = (s.totalBytes / (1024 * 1024 * 1024)).toStringAsFixed(0);
     final pct = (s.usedPercentage * 100).toInt();
 
     return Container(
-      padding: const EdgeInsets.all(18),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFF0B132B),
-        borderRadius: BorderRadius.circular(20),
+        color: const Color(0xFF0F172A),
+        borderRadius: BorderRadius.circular(16),
         border: Border.all(color: const Color(0xFF1E293B)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.3),
-            blurRadius: 16,
-            offset: const Offset(0, 8),
-          ),
-        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -206,47 +210,30 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              Row(
                 children: [
-                  const Text(
-                    'سعة التخزين المستخدمة',
-                    style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: [
-                      Text(
-                        '$usedGb GB',
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.w800,
-                          color: Colors.white,
-                        ),
-                      ),
-                      Text(
-                        ' / $totalGb GB',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          color: Color(0xFF64748B),
-                        ),
-                      ),
-                    ],
+                  const Icon(Icons.storage_rounded, size: 18, color: Color(0xFF38BDF8)),
+                  const SizedBox(width: 8),
+                  Text(
+                    'Storage: $usedGb GB / $totalGb GB',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
                   ),
                 ],
               ),
               Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                 decoration: BoxDecoration(
                   color: const Color(0xFF38BDF8).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(20),
-                  border: Border.all(
-                      color: const Color(0xFF38BDF8).withOpacity(0.3)),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 child: Text(
-                  '$pct% ممتلئ',
+                  '$pct% used',
                   style: const TextStyle(
-                    fontSize: 12,
+                    fontSize: 11,
                     fontWeight: FontWeight.w700,
                     color: Color(0xFF38BDF8),
                   ),
@@ -254,41 +241,41 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 14),
+          const SizedBox(height: 10),
           ClipRRect(
-            borderRadius: BorderRadius.circular(8),
+            borderRadius: BorderRadius.circular(6),
             child: LinearProgressIndicator(
               value: s.usedPercentage,
-              minHeight: 10,
+              minHeight: 6,
               backgroundColor: const Color(0xFF1E293B),
               valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
             ),
           ),
-          const SizedBox(height: 16),
-          // Categories horizontal breakdown
+          const SizedBox(height: 10),
           SingleChildScrollView(
             scrollDirection: Axis.horizontal,
             child: Row(
               children: VaultFileCategory.values.map((cat) {
                 final bytes = s.categoryBytes[cat] ?? 0;
                 final count = s.categoryCounts[cat] ?? 0;
+                if (count == 0 && bytes == 0) return const SizedBox.shrink();
                 return Container(
-                  margin: const EdgeInsets.only(left: 8),
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF131D3B),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: cat.color.withOpacity(0.25)),
+                    color: const Color(0xFF1E293B).withOpacity(0.6),
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: cat.color.withOpacity(0.2)),
                   ),
                   child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Icon(cat.icon, size: 16, color: cat.color),
-                      const SizedBox(width: 6),
+                      Icon(cat.icon, size: 12, color: cat.color),
+                      const SizedBox(width: 5),
                       Text(
-                        '${cat.displayNameAr}: ${_formatBytes(bytes)} ($count)',
+                        '${cat.displayName}: ${_formatBytes(bytes)}',
                         style: const TextStyle(
-                          fontSize: 11,
+                          fontSize: 10,
                           fontWeight: FontWeight.w600,
                           color: Color(0xFFE2E8F0),
                         ),
@@ -304,19 +291,16 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     );
   }
 
-  Widget _buildPillSelector() {
+  Widget _buildTabPills() {
     return Row(
       children: [
-        _buildPillTab('duplicates', '👥 المكررات',
-            _formatBytes(_summary!.totalDuplicateWasteBytes)),
-        const SizedBox(width: 8),
-        _buildPillTab(
-            'stale', '❄️ الراكدة', _formatBytes(_summary!.totalStaleBytes)),
-        const SizedBox(width: 8),
-        _buildPillTab(
-            'large', '🐘 الكبيرة', _formatBytes(_summary!.totalLargeBytes)),
-        const SizedBox(width: 8),
-        _buildPillTab('all', '📁 الكل', '${_summary!.allFiles.length}'),
+        _buildPillTab('duplicates', 'Duplicates', _formatBytes(_summary!.totalDuplicateWasteBytes)),
+        const SizedBox(width: 6),
+        _buildPillTab('stale', 'Dormant', _formatBytes(_summary!.totalStaleBytes)),
+        const SizedBox(width: 6),
+        _buildPillTab('large', 'Large Files', _formatBytes(_summary!.totalLargeBytes)),
+        const SizedBox(width: 6),
+        _buildPillTab('all', 'All Files', '${_summary!.allFiles.length}'),
       ],
     );
   }
@@ -335,38 +319,36 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
             }
           });
         },
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: BorderRadius.circular(12),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding: const EdgeInsets.symmetric(vertical: 8),
           decoration: BoxDecoration(
-            color: active
-                ? const Color(0xFF38BDF8).withOpacity(0.18)
-                : const Color(0xFF0B132B),
-            borderRadius: BorderRadius.circular(14),
+            color: active ? const Color(0xFF38BDF8).withOpacity(0.18) : const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(12),
             border: Border.all(
-              color: active
-                  ? const Color(0xFF38BDF8)
-                  : const Color(0xFF1E293B),
+              color: active ? const Color(0xFF38BDF8) : const Color(0xFF1E293B),
             ),
           ),
           child: Column(
             children: [
               Text(
                 title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w700,
                   color: active ? const Color(0xFF38BDF8) : Colors.white,
                 ),
               ),
-              const SizedBox(height: 3),
+              const SizedBox(height: 2),
               Text(
                 sub,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   fontSize: 10,
-                  color: active
-                      ? const Color(0xFFBAE6FD)
-                      : const Color(0xFF64748B),
+                  color: active ? const Color(0xFFBAE6FD) : const Color(0xFF64748B),
                 ),
               ),
             ],
@@ -376,24 +358,23 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     );
   }
 
-  Widget _buildActionHeader() {
+  Widget _buildSectionHeader() {
     final files = _getFilteredFiles();
-    final allSelected =
-        files.isNotEmpty && files.every((f) => _selectedFileIds.contains(f.id));
+    final allSelected = files.isNotEmpty && files.every((f) => _selectedFileIds.contains(f.id));
 
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
         Text(
-          'قائمة الملفات (${files.length})',
+          'Files (${files.length})',
           style: const TextStyle(
-            fontSize: 14,
+            fontSize: 13,
             fontWeight: FontWeight.w700,
             color: Color(0xFFE2E8F0),
           ),
         ),
-        TextButton.icon(
-          onPressed: () {
+        InkWell(
+          onTap: () {
             setState(() {
               if (allSelected) {
                 for (final f in files) {
@@ -406,19 +387,25 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
               }
             });
           },
-          icon: Icon(
-            allSelected
-                ? Icons.check_box_rounded
-                : Icons.check_box_outline_blank_rounded,
-            size: 18,
-            color: const Color(0xFF38BDF8),
-          ),
-          label: Text(
-            allSelected ? 'إلغاء تحديد الكل' : 'تحديد الكل',
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF38BDF8),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+            child: Row(
+              children: [
+                Icon(
+                  allSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                  size: 16,
+                  color: const Color(0xFF38BDF8),
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  allSelected ? 'Deselect All' : 'Select All',
+                  style: const TextStyle(
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFF38BDF8),
+                  ),
+                ),
+              ],
             ),
           ),
         ),
@@ -431,16 +418,15 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     if (files.isEmpty) {
       return [
         Container(
-          padding: const EdgeInsets.all(32),
+          padding: const EdgeInsets.all(28),
           alignment: Alignment.center,
           child: const Column(
             children: [
-              Icon(Icons.check_circle_outline_rounded,
-                  size: 48, color: Color(0xFF10B981)),
-              SizedBox(height: 12),
+              Icon(Icons.check_circle_outline_rounded, size: 40, color: Color(0xFF10B981)),
+              SizedBox(height: 10),
               Text(
-                'لا توجد ملفات في هذا القسم، ذاكرة جهازك محسنة!',
-                style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+                'No files found in this category. Clean & optimized!',
+                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
               ),
             ],
           ),
@@ -451,87 +437,97 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     return files.map((file) {
       final selected = _selectedFileIds.contains(file.id);
       return Container(
-        margin: const EdgeInsets.only(bottom: 10),
+        margin: const EdgeInsets.only(bottom: 6),
         decoration: BoxDecoration(
-          color: selected
-              ? const Color(0xFF1E293B).withOpacity(0.6)
-              : const Color(0xFF0B132B),
-          borderRadius: BorderRadius.circular(16),
+          color: selected ? const Color(0xFF1E293B).withOpacity(0.5) : const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(12),
           border: Border.all(
-            color: selected
-                ? const Color(0xFF38BDF8).withOpacity(0.5)
-                : const Color(0xFF1E293B),
+            color: selected ? const Color(0xFF38BDF8).withOpacity(0.4) : const Color(0xFF1E293B),
           ),
         ),
-        child: ListTile(
+        child: InkWell(
           onTap: () => _toggleFileSelection(file.id),
-          contentPadding:
-              const EdgeInsets.symmetric(horizontal: 14, vertical: 4),
-          leading: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: file.category.color.withOpacity(0.14),
-              borderRadius: BorderRadius.circular(12),
-            ),
-            child: Icon(file.category.icon,
-                color: file.category.color, size: 22),
-          ),
-          title: Text(
-            file.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Colors.white,
-            ),
-          ),
-          subtitle: Row(
-            children: [
-              Text(
-                file.formattedSize,
-                style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                  color: Color(0xFF38BDF8),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Text(
-                '•  ${file.formattedAgeDays}',
-                style: const TextStyle(
-                  fontSize: 11,
-                  color: Color(0xFF64748B),
-                ),
-              ),
-              if (file.isDuplicateCopy) ...[
-                const SizedBox(width: 8),
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+            child: Row(
+              children: [
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  width: 36,
+                  height: 36,
                   decoration: BoxDecoration(
-                    color: const Color(0xFFFB7185).withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(6),
+                    color: file.category.color.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
-                  child: const Text(
-                    'نسخة مكررة',
-                    style: TextStyle(
-                      fontSize: 9,
-                      fontWeight: FontWeight.w700,
-                      color: Color(0xFFFB7185),
-                    ),
+                  child: Icon(file.category.icon, color: file.category.color, size: 18),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        file.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          fontSize: 12.5,
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Row(
+                        children: [
+                          Text(
+                            file.formattedSize,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
+                              color: Color(0xFF38BDF8),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          Text(
+                            '• ${file.formattedAge}',
+                            style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
+                          ),
+                          if (file.isDuplicateCopy) ...[
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFFFB7185).withOpacity(0.18),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text(
+                                'Duplicate',
+                                style: TextStyle(
+                                  fontSize: 8.5,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFFB7185),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                Transform.scale(
+                  scale: 0.85,
+                  child: Checkbox(
+                    value: selected,
+                    activeColor: const Color(0xFF38BDF8),
+                    checkColor: const Color(0xFF020617),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                    side: const BorderSide(color: Color(0xFF475569)),
+                    onChanged: (_) => _toggleFileSelection(file.id),
                   ),
                 ),
               ],
-            ],
-          ),
-          trailing: Checkbox(
-            value: selected,
-            activeColor: const Color(0xFF38BDF8),
-            shape:
-                RoundedRectangleBorder(borderRadius: BorderRadius.circular(5)),
-            onChanged: (_) => _toggleFileSelection(file.id),
+            ),
           ),
         ),
       );
@@ -547,14 +543,14 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
       left: 0,
       right: 0,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
+        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
         decoration: BoxDecoration(
-          color: const Color(0xFF0F172A).withOpacity(0.95),
+          color: const Color(0xFF0B132B).withOpacity(0.96),
           border: const Border(top: BorderSide(color: Color(0xFF1E293B))),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.5),
-              blurRadius: 18,
+              blurRadius: 16,
               offset: const Offset(0, -4),
             ),
           ],
@@ -562,43 +558,43 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'المحدد: $count ملفات',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF94A3B8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    '$count files selected',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
                   ),
-                ),
-                Text(
-                  'المساحة: $totalSizeStr',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                    color: Color(0xFF38BDF8),
+                  Text(
+                    totalSizeStr,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w800,
+                      color: Color(0xFF38BDF8),
+                    ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
             ElevatedButton.icon(
               onPressed: count > 0 ? _showCompressAndOffloadModal : null,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF38BDF8),
                 foregroundColor: const Color(0xFF020617),
-                disabledBackgroundColor: const Color(0xFF334155),
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                disabledBackgroundColor: const Color(0xFF1E293B),
+                disabledForegroundColor: const Color(0xFF475569),
+                elevation: 0,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
-              icon: const Icon(Icons.cloud_upload_rounded, size: 20),
+              icon: const Icon(Icons.cloud_upload_rounded, size: 18),
               label: const Text(
-                'ضغط وترحيل سحابي',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
+                'Archive & Offload',
+                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
               ),
             ),
           ],
@@ -609,7 +605,7 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
 }
 
 // ============================================================================
-// COMPRESSION & CLOUD OFFLOAD MODAL BOTTOM SHEET
+// COMPRESSION & CLOUD OFFLOAD MODAL (ENGLISH)
 // ============================================================================
 
 class _CloudArchiverModal extends StatefulWidget {
@@ -636,7 +632,6 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
   Future<void> _startProcess() async {
     setState(() => _compressing = true);
 
-    // 1. Compress into local ZIP
     final res = await _service.compressFiles(widget.selectedFiles);
     if (!mounted) return;
 
@@ -646,7 +641,6 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
       _exporting = true;
     });
 
-    // 2. Export to chosen cloud provider
     final ok = await _service.exportToCloud(res.archivePath, _selectedProvider);
     if (!mounted) return;
 
@@ -661,10 +655,8 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
     if (!mounted) return;
     widget.onArchivedAndDeleted();
     ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(
-          'تم ترحيل الأرشيف بنجاح وحذف الملفات الأصلية لتفريغ المساحة! 🎉',
-        ),
+      const SnackBar(
+        content: Text('Archive offloaded & original files safely cleaned! 🎉'),
       ),
     );
   }
@@ -672,7 +664,7 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -681,29 +673,29 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text(
-                'الأرشفة والترحيل السحابي',
+                'Cloud Archiver & Offload',
                 style: TextStyle(
-                  fontSize: 18,
+                  fontSize: 16,
                   fontWeight: FontWeight.w800,
                   color: Colors.white,
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8)),
+                icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8), size: 20),
                 onPressed: () => Navigator.pop(context),
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
           if (_compressing) ...[
             const Center(
               child: Column(
                 children: [
                   CircularProgressIndicator(color: Color(0xFF38BDF8)),
-                  SizedBox(height: 16),
+                  SizedBox(height: 14),
                   Text(
-                    'جاري ضغط الملفات وتجهيز أرشيف ZIP...',
-                    style: TextStyle(fontSize: 14, color: Color(0xFFBAE6FD)),
+                    'Compressing into secure ZIP archive...',
+                    style: TextStyle(fontSize: 13, color: Color(0xFFBAE6FD)),
                   ),
                 ],
               ),
@@ -713,104 +705,90 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
               child: Column(
                 children: [
                   const CircularProgressIndicator(color: Color(0xFFA855F7)),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 14),
                   Text(
-                    'جاري الإرسال إلى ${_selectedProvider.displayNameAr}...',
-                    style: const TextStyle(
-                        fontSize: 14, color: Color(0xFFBAE6FD)),
+                    'Exporting to ${_selectedProvider.displayName}...',
+                    style: const TextStyle(fontSize: 13, color: Color(0xFFBAE6FD)),
                   ),
                 ],
               ),
             ),
           ] else if (_readyToFreeSpace) ...[
-            // Success & Free Space Confirmation
             Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(14),
               decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: const Color(0xFF10B981)),
+                color: const Color(0xFF10B981).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF10B981).withOpacity(0.5)),
               ),
               child: Column(
                 children: [
-                  const Icon(Icons.cloud_done_rounded,
-                      size: 44, color: Color(0xFF10B981)),
-                  const SizedBox(height: 10),
+                  const Icon(Icons.cloud_done_rounded, size: 38, color: Color(0xFF10B981)),
+                  const SizedBox(height: 8),
                   const Text(
-                    'تم الترحيل السحابي بنجاح! 🎉',
+                    'Archived to Cloud Successfully! 🎉',
                     style: TextStyle(
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.w800,
                       color: Colors.white,
                     ),
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Text(
-                    'تم توفير ${_archiveResult?.spaceSavedFormatted ?? ''} بنسبة ضغط ${((_archiveResult?.spaceSavedRatio ?? 0) * 100).toInt()}%',
-                    style: const TextStyle(
-                        fontSize: 13, color: Color(0xFFE2E8F0)),
+                    'Saved ${_archiveResult?.spaceSavedFormatted ?? ''} with ${((_archiveResult?.spaceSavedRatio ?? 0) * 100).toInt()}% compression',
+                    style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
                   ),
                 ],
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _freeUpSpace,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFFFB7185),
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
               child: const Text(
-                'حذف الملفات الأصلية وتفريغ الذاكرة الآن',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+                'Free Up Storage Now (Delete Originals)',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             TextButton(
               onPressed: () => Navigator.pop(context),
               child: const Text(
-                'الاحتفاظ بالملفات الأصلية على الجهاز',
-                style: TextStyle(color: Color(0xFF94A3B8)),
+                'Keep Originals on Phone',
+                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
               ),
             ),
           ] else ...[
-            // Provider Selection
             const Text(
-              'اختر وجهة الترحيل السحابي:',
-              style: TextStyle(fontSize: 13, color: Color(0xFF94A3B8)),
+              'Select Cloud Destination:',
+              style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: 10),
             ...CloudProvider.values.map((prov) {
               final active = _selectedProvider == prov;
               return Container(
-                margin: const EdgeInsets.only(bottom: 8),
+                margin: const EdgeInsets.only(bottom: 6),
                 decoration: BoxDecoration(
-                  color: active
-                      ? const Color(0xFF38BDF8).withOpacity(0.14)
-                      : const Color(0xFF1E293B),
-                  borderRadius: BorderRadius.circular(14),
+                  color: active ? const Color(0xFF38BDF8).withOpacity(0.12) : const Color(0xFF1E293B),
+                  borderRadius: BorderRadius.circular(12),
                   border: Border.all(
-                    color: active
-                        ? const Color(0xFF38BDF8)
-                        : const Color(0xFF334155),
+                    color: active ? const Color(0xFF38BDF8) : const Color(0xFF334155),
                   ),
                 ),
                 child: ListTile(
+                  dense: true,
                   onTap: () => setState(() => _selectedProvider = prov),
-                  leading: Icon(prov.icon,
-                      color: active
-                          ? const Color(0xFF38BDF8)
-                          : const Color(0xFF94A3B8)),
+                  leading: Icon(prov.icon, size: 20, color: active ? const Color(0xFF38BDF8) : const Color(0xFF94A3B8)),
                   title: Text(
-                    prov.displayNameAr,
+                    prov.displayName,
                     style: TextStyle(
-                      fontSize: 14,
-                      fontWeight:
-                          active ? FontWeight.w700 : FontWeight.w500,
+                      fontSize: 13,
+                      fontWeight: active ? FontWeight.w700 : FontWeight.w500,
                       color: Colors.white,
                     ),
                   ),
@@ -819,29 +797,25 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
                     groupValue: _selectedProvider,
                     activeColor: const Color(0xFF38BDF8),
                     onChanged: (val) {
-                      if (val != null) {
-                        setState(() => _selectedProvider = val);
-                      }
+                      if (val != null) setState(() => _selectedProvider = val);
                     },
                   ),
                 ),
               );
             }),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             ElevatedButton.icon(
               onPressed: _startProcess,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF38BDF8),
                 foregroundColor: const Color(0xFF020617),
-                padding: const EdgeInsets.symmetric(vertical: 14),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
               ),
-              icon: const Icon(Icons.archive_rounded),
+              icon: const Icon(Icons.archive_rounded, size: 18),
               label: const Text(
-                'بدء الضغط والترحيل السحابي',
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                'Compress & Offload to Cloud',
+                style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
               ),
             ),
           ],

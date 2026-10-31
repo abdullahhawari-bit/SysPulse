@@ -1015,7 +1015,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
           NavigationDestination(
               icon: Icon(Icons.dashboard_outlined),
               selectedIcon: Icon(Icons.dashboard_rounded, color: AppPalette.cyan),
-              label: 'Dashboard'),
+              label: 'Home'),
           NavigationDestination(
               icon: Icon(Icons.apps_outlined),
               selectedIcon: Icon(Icons.apps_rounded, color: AppPalette.cyan),
@@ -1135,10 +1135,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('خزنة التخزين والأرشفة السحابية',
+                    Text('Storage Vault & Cloud Archiver',
                         style: AppStyles.cardTitle),
                     Text(
-                        'تحليل المكررات والملفات الراكدة والترحيل إلى Drive / OneDrive',
+                        'Analyze duplicates, cold storage & offload to Drive / OneDrive',
                         style: AppStyles.caption),
                   ],
                 ),
@@ -1148,9 +1148,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
           const SizedBox(height: 12),
           Row(
             children: [
-              _buildFeatureBadge('👥 كشف المكررات'),
+              _buildFeatureBadge('👥 Duplicates'),
               const SizedBox(width: 6),
-              _buildFeatureBadge('❄️ الملفات الراكدة'),
+              _buildFeatureBadge('❄️ Dormant Files'),
               const SizedBox(width: 6),
               _buildFeatureBadge('☁️ Google & OneDrive'),
             ],
@@ -1170,7 +1170,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
               ),
               icon: const Icon(Icons.arrow_forward_rounded, size: 18),
               label: const Text(
-                'فتح خزنة التخزين وبدء الأرشفة',
+                'Open Storage Vault ➔',
                 style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
               ),
             ),
