@@ -1,0 +1,67 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools"
+    package="com.syspulse.mobile">
+
+    <!-- =================================================================== -->
+    <!-- 1. APP USAGE TRACKER PERMISSIONS                                    -->
+    <!-- Grants access to UsageStatsManager. Must ALSO be enabled manually   -->
+    <!-- by the user via Settings.ACTION_USAGE_ACCESS_SETTINGS intent.       -->
+    <!-- =================================================================== -->
+    <uses-permission
+        android:name="android.permission.PACKAGE_USAGE_STATS"
+        tools:ignore="ProtectedPermissions" />
+
+    <!-- Required on Android 11+ (API 30+) to resolve app names/icons & scan -->
+    <!-- installed packages for App Usage Tracker and Security Scanner.      -->
+    <uses-permission
+        android:name="android.permission.QUERY_ALL_PACKAGES"
+        tools:ignore="QueryAllPackagesPermission" />
+
+    <!-- =================================================================== -->
+    <!-- 2. NETWORK STATS PERMISSIONS                                        -->
+    <!-- Needed for TrafficStats, ConnectivityManager & NetworkStatsManager. -->
+    <!-- =================================================================== -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+
+    <!-- =================================================================== -->
+    <!-- 3. CALL STATS & TELEPHONY PERMISSIONS (Dangerous / Runtime)         -->
+    <!-- Must be requested at runtime via ActivityCompat / permission_handler-->
+    <!-- =================================================================== -->
+    <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_PHONE_STATE" />
+
+    <!-- =================================================================== -->
+    <!-- 4. BATTERY MONITOR & ALERT/FIX OPTIMIZER PERMISSIONS                -->
+    <!-- Allows ActivityManager.killBackgroundProcesses(pkg) for Fix actions.-->
+    <!-- =================================================================== -->
+    <uses-permission android:name="android.permission.KILL_BACKGROUND_PROCESSES" />
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Optional: For persistent real-time background telemetry service     -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <application
+        android:label="SysPulse"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher">
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+</manifest>

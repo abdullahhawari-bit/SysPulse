@@ -1,0 +1,19 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- =================================================================== -->
+    <!-- GOOGLE PLAY FLAVOR MANIFEST OVERLAY (`src/google/AndroidManifest.xml`) -->
+    <!-- Automatically removes READ_CALL_LOG during Gradle Manifest Merger   -->
+    <!-- so the Google Play `.aab` passes Play Console policy review cleanly, -->
+    <!-- while `standalone` APK builds retain full Call Log analytics.       -->
+    <!-- =================================================================== -->
+    <uses-permission
+        android:name="android.permission.READ_CALL_LOG"
+        tools:node="remove" />
+
+    <application android:label="@string/app_name">
+        <meta-data
+            android:name="com.syspulse.store_channel"
+            android:value="google_play" />
+    </application>
+</manifest>

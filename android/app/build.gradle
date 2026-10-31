@@ -1,0 +1,119 @@
+plugins {
+    id "com.android.application"
+    id "kotlin-android"
+    id "dev.flutter.flutter-gradle-plugin"
+}
+
+// ============================================================================
+// CONDITIONAL HUAWEI HMS PLUGIN ACTIVATION
+// Only applies `com.huawei.agconnect` when building the `huawei` flavor so
+// Google Play, Samsung, and Standalone builds stay 100% free of HMS hooks.
+// ============================================================================
+def isHuaweiTask = gradle.startParameter.taskNames.any { taskName ->
+    taskName.toLowerCase().contains("huawei")
+}
+if (isHuaweiTask && file("agconnect-services.json").exists()) {
+    apply plugin: "com.huawei.agconnect"
+}
+
+android {
+    namespace "com.syspulse.mobile"
+    compileSdk 34
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+
+    kotlinOptions {
+        jvmTarget = "17"
+    }
+
+    defaultConfig {
+        applicationId "com.syspulse.mobile"
+        minSdk 24
+        targetSdk 34
+        versionCode 1
+        versionName "1.0.0"
+    }
+
+    // ========================================================================
+    // 1. MULTI-STORE PRODUCT FLAVORS SETUP
+    // ========================================================================
+    flavorDimensions "store"
+
+    productFlavors {
+        google {
+            dimension "store"
+            // Standard package ID for Google Play Store
+            resValue "string", "app_name", "SysPulse"
+            buildConfigField "String", "STORE_FLAVOR", '"google"'
+            buildConfigField "String", "MOBILE_SERVICES", '"GMS"'
+        }
+
+        huawei {
+            dimension "store"
+            // Huawei AppGallery requires `.huawei` suffix for IAP / HMS apps
+            applicationIdSuffix ".huawei"
+            versionNameSuffix "-hms"
+            resValue "string", "app_name", "SysPulse"
+            buildConfigField "String", "STORE_FLAVOR", '"huawei"'
+            buildConfigField "String", "MOBILE_SERVICES", '"HMS"'
+        }
+
+        samsung {
+            dimension "store"
+            versionNameSuffix "-galaxy"
+            resValue "string", "app_name", "SysPulse"
+            buildConfigField "String", "STORE_FLAVOR", '"samsung"'
+            buildConfigField "String", "MOBILE_SERVICES", '"GMS"'
+        }
+
+        standalone {
+            dimension "store"
+            versionNameSuffix "-direct"
+            resValue "string", "app_name", "SysPulse Pro"
+            buildConfigField "String", "STORE_FLAVOR", '"standalone"'
+            buildConfigField "String", "MOBILE_SERVICES", '"INDEPENDENT"'
+        }
+    }
+
+    buildFeatures {
+        buildConfig true
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.debug // Replace with release keystore in production
+            minifyEnabled true
+            shrinkResources true
+            proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
+        }
+    }
+}
+
+// ============================================================================
+// 2. STRICT GMS VS. HMS ISOLATION
+// Strip all Google Play Services (GMS) transitive dependencies from the
+// `huawei` flavor so it never crashes on pure HMS Huawei devices.
+// ============================================================================
+configurations.matching { it.name.startsWith("huawei") }.configureEach {
+    exclude group: "com.google.android.gms"
+    exclude group: "com.android.billingclient"
+}
+
+dependencies {
+    // Google Play Billing only compiled into the `google` flavor
+    // googleImplementation "com.android.billingclient:billing-ktx:7.0.0"
+
+    // Huawei HMS IAP & Base SDKs only compiled into the `huawei` flavor
+    // huaweiImplementation "com.huawei.hms:iap:6.13.0.300"
+    // huaweiImplementation "com.huawei.hms:base:6.11.0.301"
+
+    // Samsung Galaxy Store IAP / Checkout only compiled into the `samsung` flavor
+    // samsungImplementation "com.android.billingclient:billing-ktx:7.0.0"
+}
+
+flutter {
+    source '../..'
+}

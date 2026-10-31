@@ -1,0 +1,33 @@
+name: mobile_syspulse
+description: Comprehensive Android System Monitoring & Analytics Mobile App (Dark Mode).
+publish_to: 'none'
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.2.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # Core boilerplate runs immediately with ZERO external packages required.
+  # Uncomment the packages below as you wire up native Android telemetry:
+  #
+  # app_usage: ^3.0.1             # App Usage Tracker (UsageStatsManager wrapper)
+  # battery_plus: ^6.1.0          # Battery Monitor level, state & charging telemetry
+  # call_log: ^4.0.0              # Call Stats history & duration analytics
+  # connectivity_plus: ^6.1.0     # Network transport type (Wi-Fi / Cellular / VPN)
+  # network_info_plus: ^6.1.0     # Local IP / Wi-Fi BSSID details
+  # device_info_plus: ^11.1.0     # Android SDK level, board & security patch date
+  # permission_handler: ^11.3.1   # Runtime permissions (READ_CALL_LOG, READ_PHONE_STATE)
+  # safe_device: ^1.1.9           # Security Scanner root / emulator / USB debug checks
+  # purchases_flutter: ^8.2.0     # RevenueCat Unified Multi-Store In-App Purchases
+  # fl_chart: ^0.69.0             # Optional advanced charting (CustomPainters included out-of-the-box)
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
