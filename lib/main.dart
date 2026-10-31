@@ -50,6 +50,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'config/flavor_config.dart';
 import 'services/monetization_service.dart';
+import 'ui/storage_vault_screen.dart';
 
 Future<void> main() async {
   await bootstrapSysPulseApp(FlavorConfig.standalone());
@@ -1027,12 +1028,20 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
               icon: Icon(Icons.shield_outlined),
               selectedIcon: Icon(Icons.shield_rounded, color: AppPalette.cyan),
               label: 'Security'),
+          NavigationDestination(
+              icon: Icon(Icons.folder_zip_outlined),
+              selectedIcon: Icon(Icons.folder_zip_rounded, color: AppPalette.cyan),
+              label: 'Vault'),
         ],
       ),
     );
   }
 
   Widget _buildBody(DashboardBundle d, {required bool isFoldableWidth}) {
+    if (_navIndex == 4) {
+      return const StorageVaultScreen();
+    }
+
     final showAll = _navIndex == 0;
     final showPermBanner =
         d.permissions.isNativeConnected && !d.permissions.allGranted;
@@ -1047,6 +1056,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
         ],
         _buildTopSummaryStrip(d),
         const SizedBox(height: 16),
+        if (showAll) ...[
+          _buildStorageVaultQuickBanner(),
+          const SizedBox(height: 16),
+        ],
         if (showAll || _navIndex == 3) ...[
           _buildAlertFixCard(d.alerts),
           const SizedBox(height: 16),
@@ -1085,6 +1098,98 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
           if (showAll || _navIndex == 1) _buildCallStatsCard(d.calls),
         ],
       ],
+    );
+  }
+
+  Widget _buildStorageVaultQuickBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppPalette.cyan.withOpacity(0.12),
+            AppPalette.violet.withOpacity(0.08),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppPalette.cyan.withOpacity(0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppPalette.cyan.withOpacity(0.2),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.folder_zip_rounded,
+                    color: AppPalette.cyan, size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('خزنة التخزين والأرشفة السحابية',
+                        style: AppStyles.cardTitle),
+                    Text(
+                        'تحليل المكررات والملفات الراكدة والترحيل إلى Drive / OneDrive',
+                        style: AppStyles.caption),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildFeatureBadge('👥 كشف المكررات'),
+              const SizedBox(width: 6),
+              _buildFeatureBadge('❄️ الملفات الراكدة'),
+              const SizedBox(width: 6),
+              _buildFeatureBadge('☁️ Google & OneDrive'),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: () => setState(() => _navIndex = 4),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppPalette.cyan,
+                foregroundColor: AppPalette.bg,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 10),
+              ),
+              icon: const Icon(Icons.arrow_forward_rounded, size: 18),
+              label: const Text(
+                'فتح خزنة التخزين وبدء الأرشفة',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildFeatureBadge(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: AppPalette.cardAlt,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: AppPalette.border),
+      ),
+      child: Text(label,
+          style: const TextStyle(fontSize: 10, color: AppPalette.textPrimary)),
     );
   }
 

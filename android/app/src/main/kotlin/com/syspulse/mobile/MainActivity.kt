@@ -28,10 +28,19 @@ import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import android.os.Environment
+import androidx.core.content.FileProvider
+import java.io.BufferedInputStream
+import java.io.BufferedOutputStream
 import java.io.File
+import java.io.FileInputStream
+import java.io.FileOutputStream
+import java.security.MessageDigest
 import java.util.Calendar
 import java.util.Locale
 import java.util.concurrent.Executors
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -81,6 +90,25 @@ class MainActivity : FlutterActivity() {
                     "setAppStandbyRestricted", "flushIdleSockets" -> runAsync(result) {
                         System.gc()
                         true
+                    }
+                    "scanStorageVault" -> runAsync(result) {
+                        val staleDays = call.argument<Int>("staleDays") ?: 60
+                        scanStorageVault(staleDays)
+                    }
+                    "compressFiles" -> runAsync(result) {
+                        val paths = call.argument<List<String>>("filePaths") ?: emptyList()
+                        val archiveName = call.argument<String>("archiveName")
+                        compressFilesToZip(paths, archiveName)
+                    }
+                    "exportArchiveToCloud" -> {
+                        val archivePath = call.argument<String>("archivePath") ?: ""
+                        val provider = call.argument<String>("provider") ?: "system"
+                        val ok = exportArchiveToCloud(archivePath, provider)
+                        result.success(ok)
+                    }
+                    "deleteArchivedFiles" -> runAsync(result) {
+                        val paths = call.argument<List<String>>("filePaths") ?: emptyList()
+                        deleteArchivedStorageFiles(paths)
                     }
                     else -> result.notImplemented()
                 }
@@ -834,5 +862,255 @@ class MainActivity : FlutterActivity() {
         return pkg == "android" ||
             pkg.startsWith("com.android.systemui") ||
             pkg.startsWith("com.android.providers")
+    }
+
+    // ========================================================================
+    // STORAGE VAULT & CLOUD ARCHIVER (INDEXING, DUPLICATES, ZIP, CLOUD INTENT)
+    // ========================================================================
+
+    private fun scanStorageVault(staleDays: Int): Map<String, Any> {
+        val allFiles = mutableListOf<Map<String, Any>>()
+        val sizeGroupMap = mutableMapOf<Long, MutableList<MutableMap<String, Any>>>()
+        val staleThresholdMillis = System.currentTimeMillis() - (staleDays * 86_400_000L)
+        val largeThresholdBytes = 50L * 1024L * 1024L
+
+        val targetDirs = listOfNotNull(
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
+        )
+
+        fun categorizeExtension(ext: String): String {
+            return when (ext.lowercase(Locale.ROOT)) {
+                "jpg", "jpeg", "png", "webp", "gif", "heic", "svg" -> "image"
+                "mp4", "mkv", "mov", "avi", "3gp", "webm" -> "video"
+                "mp3", "m4a", "wav", "aac", "ogg", "flac" -> "audio"
+                "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt" -> "document"
+                "apk" -> "apk"
+                "zip", "rar", "7z", "tar", "gz" -> "archive"
+                else -> "other"
+            }
+        }
+
+        fun scanDirRecursive(dir: File, depth: Int = 0) {
+            if (depth > 4 || !dir.exists() || !dir.canRead()) return
+            val children = dir.listFiles() ?: return
+            for (f in children) {
+                if (f.isDirectory) {
+                    if (!f.name.startsWith(".")) scanDirRecursive(f, depth + 1)
+                } else if (f.isFile && f.length() > 0) {
+                    val length = f.length()
+                    val lastMod = f.lastModified()
+                    val ext = f.extension
+                    val cat = categorizeExtension(ext)
+                    val isStale = lastMod < staleThresholdMillis
+                    val isLarge = length >= largeThresholdBytes
+
+                    val itemMap = mutableMapOf<String, Any>(
+                        "id" to f.absolutePath,
+                        "name" to f.name,
+                        "path" to f.absolutePath,
+                        "sizeBytes" to length,
+                        "lastModified" to lastMod,
+                        "category" to cat,
+                        "isStale" to isStale,
+                        "isLarge" to isLarge,
+                        "isDuplicateCopy" to false
+                    )
+
+                    allFiles.add(itemMap)
+                    if (length > 2048) {
+                        sizeGroupMap.getOrPut(length) { mutableListOf() }.add(itemMap)
+                    }
+                }
+            }
+        }
+
+        for (d in targetDirs) {
+            scanDirRecursive(d)
+        }
+
+        val duplicateGroups = mutableListOf<List<Map<String, Any>>>()
+        for ((_, group) in sizeGroupMap) {
+            if (group.size > 1) {
+                val hashMap = mutableMapOf<String, MutableList<MutableMap<String, Any>>>()
+                for (item in group) {
+                    val path = item["path"] as String
+                    val hash = computeFastSampleHash(File(path))
+                    if (hash != null) {
+                        item["hash"] = hash
+                        hashMap.getOrPut(hash) { mutableListOf() }.add(item)
+                    }
+                }
+                for ((h, dups) in hashMap) {
+                    if (dups.size > 1) {
+                        for (i in 1 until dups.size) {
+                            dups[i]["isDuplicateCopy"] = true
+                            dups[i]["duplicateGroupId"] = h
+                        }
+                        dups[0]["duplicateGroupId"] = h
+                        duplicateGroups.add(dups)
+                    }
+                }
+            }
+        }
+
+        val statFs = android.os.StatFs(Environment.getExternalStorageDirectory().path)
+        val totalBytes = statFs.totalBytes
+        val freeBytes = statFs.availableBytes
+        val usedBytes = max(0L, totalBytes - freeBytes)
+
+        return mapOf(
+            "success" to true,
+            "totalBytes" to totalBytes,
+            "usedBytes" to usedBytes,
+            "freeBytes" to freeBytes,
+            "files" to allFiles,
+            "duplicateGroups" to duplicateGroups
+        )
+    }
+
+    private fun computeFastSampleHash(file: File): String? {
+        return try {
+            val md = MessageDigest.getInstance("SHA-256")
+            val len = file.length()
+            val stream = FileInputStream(file)
+            val buffer = ByteArray(8192)
+
+            val r1 = stream.read(buffer, 0, buffer.size)
+            if (r1 > 0) md.update(buffer, 0, r1)
+
+            if (len > 65536) {
+                stream.channel.position(len / 2)
+                val r2 = stream.read(buffer, 0, buffer.size)
+                if (r2 > 0) md.update(buffer, 0, r2)
+            }
+
+            if (len > 131072) {
+                stream.channel.position(len - 8192)
+                val r3 = stream.read(buffer, 0, buffer.size)
+                if (r3 > 0) md.update(buffer, 0, r3)
+            }
+            stream.close()
+
+            md.digest().joinToString("") { "%02x".format(it) }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun compressFilesToZip(filePaths: List<String>, archiveName: String?): Map<String, Any> {
+        val safeName = if (!archiveName.isNullOrBlank()) {
+            if (archiveName.endsWith(".zip")) archiveName else "$archiveName.zip"
+        } else {
+            "SysPulse_Archive_${System.currentTimeMillis()}.zip"
+        }
+
+        val outDir = cacheDir
+        val zipFile = File(outDir, safeName)
+        if (zipFile.exists()) zipFile.delete()
+
+        var totalOriginal = 0L
+        val usedNames = mutableSetOf<String>()
+
+        ZipOutputStream(BufferedOutputStream(FileOutputStream(zipFile))).use { zos ->
+            zos.setLevel(6)
+            for (p in filePaths) {
+                val f = File(p)
+                if (!f.exists() || !f.isFile) continue
+                totalOriginal += f.length()
+
+                var entryName = f.name
+                var count = 1
+                while (usedNames.contains(entryName)) {
+                    val dot = f.name.lastIndexOf('.')
+                    entryName = if (dot > 0) {
+                        "${f.name.substring(0, dot)}_$count.${f.name.substring(dot + 1)}"
+                    } else {
+                        "${f.name}_$count"
+                    }
+                    count++
+                }
+                usedNames.add(entryName)
+
+                zos.putNextEntry(ZipEntry(entryName))
+                BufferedInputStream(FileInputStream(f)).use { bis ->
+                    bis.copyTo(zos)
+                }
+                zos.closeEntry()
+            }
+        }
+
+        return mapOf(
+            "success" to true,
+            "archivePath" to zipFile.absolutePath,
+            "archiveName" to safeName,
+            "originalBytes" to totalOriginal,
+            "compressedBytes" to zipFile.length(),
+            "filesCount" to usedNames.size
+        )
+    }
+
+    private fun exportArchiveToCloud(archivePath: String, provider: String): Boolean {
+        val file = File(archivePath)
+        if (!file.exists()) return false
+
+        val uri = FileProvider.getUriForFile(
+            this,
+            "$packageName.fileprovider",
+            file
+        )
+
+        val intent = Intent(Intent.ACTION_SEND).apply {
+            type = "application/zip"
+            putExtra(Intent.EXTRA_STREAM, uri)
+            putExtra(Intent.EXTRA_SUBJECT, "SysPulse Cloud Archive: ${file.name}")
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+        }
+
+        val targetPkg = when (provider) {
+            "google_drive" -> "com.google.android.apps.docs"
+            "onedrive" -> "com.microsoft.skydrive"
+            else -> null
+        }
+
+        var launched = false
+        if (targetPkg != null) {
+            intent.setPackage(targetPkg)
+            if (intent.resolveActivity(packageManager) != null) {
+                mainHandler.post { startActivity(intent) }
+                launched = true
+            }
+        }
+
+        if (!launched) {
+            intent.setPackage(null)
+            val chooser = Intent.createChooser(intent, "ترحيل الأرشيف السحابي (SysPulse)")
+            mainHandler.post { startActivity(chooser) }
+        }
+
+        return true
+    }
+
+    private fun deleteArchivedStorageFiles(filePaths: List<String>): Map<String, Any> {
+        var count = 0
+        var freed = 0L
+        for (p in filePaths) {
+            val f = File(p)
+            if (f.exists() && f.isFile) {
+                val len = f.length()
+                if (f.delete()) {
+                    count++
+                    freed += len
+                }
+            }
+        }
+        return mapOf(
+            "deletedCount" to count,
+            "freedBytes" to freed
+        )
     }
 }
