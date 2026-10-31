@@ -26,11 +26,85 @@ jobs:
       - name: Generate Missing Platform Wrapper Files Safely
         run: flutter create --org com.syspulse --project-name mobile_syspulse .
 
-      - name: Configure Android Build Features
+      - name: Setup Android Gradle Config
         run: |
-          echo "android.defaults.buildfeatures.resvalues=true" >> android/gradle.properties
-          echo "android.defaults.buildfeatures.buildconfig=true" >> android/gradle.properties
-          sed -i '/defaultConfig {/i \    buildFeatures {\n        resValues = true\n        buildConfig = true\n    }' android/app/build.gradle
+          cat << 'EOF' > android/app/build.gradle
+          plugins {
+              id "com.android.application"
+              id "kotlin-android"
+              id "dev.flutter.flutter-gradle-plugin"
+          }
+
+          android {
+              namespace "com.syspulse.mobile"
+              compileSdk 34
+
+              compileOptions {
+                  sourceCompatibility JavaVersion.VERSION_17
+                  targetCompatibility JavaVersion.VERSION_17
+              }
+
+              kotlinOptions {
+                  jvmTarget = "17"
+              }
+
+              defaultConfig {
+                  applicationId "com.syspulse.mobile"
+                  minSdk 24
+                  targetSdk 34
+                  versionCode 1
+                  versionName "1.0.0"
+              }
+
+              buildFeatures {
+                  resValues true
+                  buildConfig true
+              }
+
+              flavorDimensions "store"
+
+              productFlavors {
+                  google {
+                      dimension "store"
+                      resValue "string", "app_name", "SysPulse"
+                      buildConfigField "String", "STORE_FLAVOR", '"google"'
+                      buildConfigField "String", "MOBILE_SERVICES", '"GMS"'
+                  }
+                  huawei {
+                      dimension "store"
+                      applicationIdSuffix ".huawei"
+                      versionNameSuffix "-hms"
+                      resValue "string", "app_name", "SysPulse"
+                      buildConfigField "String", "STORE_FLAVOR", '"huawei"'
+                      buildConfigField "String", "MOBILE_SERVICES", '"HMS"'
+                  }
+                  samsung {
+                      dimension "store"
+                      versionNameSuffix "-galaxy"
+                      resValue "string", "app_name", "SysPulse"
+                      buildConfigField "String", "STORE_FLAVOR", '"samsung"'
+                      buildConfigField "String", "MOBILE_SERVICES", '"GMS"'
+                  }
+                  standalone {
+                      dimension "store"
+                      versionNameSuffix "-direct"
+                      resValue "string", "app_name", "SysPulse Pro"
+                      buildConfigField "String", "STORE_FLAVOR", '"standalone"'
+                      buildConfigField "String", "MOBILE_SERVICES", '"INDEPENDENT"'
+                  }
+              }
+
+              buildTypes {
+                  release {
+                      signingConfig signingConfigs.debug
+                      minifyEnabled false
+                      shrinkResources false
+                  }
+              }
+          }
+
+          dependencies {}
+          EOF
 
       - name: Install Dependencies
         run: flutter pub get
