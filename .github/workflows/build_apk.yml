@@ -26,6 +26,12 @@ jobs:
       - name: Generate Missing Platform Wrapper Files Safely
         run: flutter create --org com.syspulse --project-name mobile_syspulse .
 
+      - name: Configure Android Build Features
+        run: |
+          echo "android.defaults.buildfeatures.resvalues=true" >> android/gradle.properties
+          echo "android.defaults.buildfeatures.buildconfig=true" >> android/gradle.properties
+          sed -i '/defaultConfig {/i \    buildFeatures {\n        resValues = true\n        buildConfig = true\n    }' android/app/build.gradle
+
       - name: Install Dependencies
         run: flutter pub get
 
