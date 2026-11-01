@@ -1030,11 +1030,16 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('SysPulse', style: AppStyles.cardTitle),
-                Text(
-                  '${FlavorConfig.instance.storeDisplayName} • ${MonetizationService.instance.activeBillingStatus}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppStyles.caption,
+                SizedBox(
+                  width: double.infinity,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      'Direct APK • ${MonetizationService.instance.activeBillingStatus}',
+                      style: AppStyles.caption,
+                    ),
+                  ),
                 ),
               ],
             ),
@@ -1200,13 +1205,13 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
             ],
           ),
           const SizedBox(height: 12),
-          Row(
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
             children: [
               _buildFeatureBadge('👥 Duplicates'),
-              const SizedBox(width: 6),
               _buildFeatureBadge('❄️ Dormant Files'),
-              const SizedBox(width: 6),
-              _buildFeatureBadge('☁️ Google & OneDrive'),
+              _buildFeatureBadge('☁️ Cloud Backup'),
             ],
           ),
           const SizedBox(height: 14),
@@ -1332,10 +1337,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
     final badgeColor = unresolved == 0 ? AppPalette.emerald : AppPalette.amber;
 
     return _DashboardCard(
-      title: 'Alert & Fix System',
+      title: 'Alert & Optimizer',
       subtitle: unresolved == 0
-          ? 'All background optimizations applied'
-          : '$unresolved performance optimizations suggested',
+          ? 'All optimizations applied'
+          : '$unresolved actions recommended',
       icon: Icons.auto_fix_high_rounded,
       iconColor: badgeColor,
       trailing: _StatusBadge(
@@ -1370,7 +1375,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(alert.title,
+                          maxLines: 2,
                           style: AppStyles.itemTitle.copyWith(
+                              fontSize: 13,
                               color: alert.isResolved
                                   ? AppPalette.textSecondary
                                   : AppPalette.textPrimary,
@@ -1378,7 +1385,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                                   ? TextDecoration.lineThrough
                                   : null)),
                       const SizedBox(height: 3),
-                      Text(alert.description, style: AppStyles.cardSub),
+                      Text(alert.description,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppStyles.cardSub.copyWith(fontSize: 11)),
                       const SizedBox(height: 5),
                       Text(alert.estimatedImpact,
                           style: TextStyle(
@@ -2017,10 +2027,15 @@ class _DashboardCard extends StatelessWidget {
               child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: AppStyles.cardTitle),
+                    SizedBox(
+                      width: double.infinity,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        alignment: Alignment.centerLeft,
+                        child: Text(title, style: AppStyles.cardTitle),
+                      ),
+                    ),
+                    const SizedBox(height: 1),
                     Text(subtitle,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -2050,7 +2065,7 @@ class _QuickStatPill extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.all(11),
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 11),
       decoration: BoxDecoration(
           color: AppPalette.card,
           borderRadius: BorderRadius.circular(14),
@@ -2058,14 +2073,24 @@ class _QuickStatPill extends StatelessWidget {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Icon(icon, size: 17, color: accent),
         const SizedBox(height: 6),
-        Text(value,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppStyles.itemTitle.copyWith(fontWeight: FontWeight.w800)),
-        Text(label,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: AppStyles.caption),
+        SizedBox(
+          width: double.infinity,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(value,
+                style: AppStyles.itemTitle.copyWith(fontWeight: FontWeight.w800)),
+          ),
+        ),
+        const SizedBox(height: 2),
+        SizedBox(
+          width: double.infinity,
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(label, style: AppStyles.caption),
+          ),
+        ),
       ]),
     );
   }

@@ -410,7 +410,7 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
   // ==========================================================================
   Widget _buildLeftVerticalRail() {
     return Container(
-      width: 90,
+      width: 98,
       decoration: const BoxDecoration(
         color: Color(0xFF090D16),
         border: Border(
@@ -418,7 +418,7 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
         ),
       ),
       child: ListView(
-        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 5),
         children: [
           _buildVerticalRailTab(
             key: 'duplicates',
@@ -474,7 +474,7 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
       borderRadius: BorderRadius.circular(12),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        padding: const EdgeInsets.symmetric(vertical: 9, horizontal: 5),
         decoration: BoxDecoration(
           color: active ? activeColor.withOpacity(0.16) : const Color(0xFF0F172A),
           borderRadius: BorderRadius.circular(12),
@@ -491,33 +491,46 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
               size: 20,
               color: active ? activeColor : const Color(0xFF94A3B8),
             ),
-            const SizedBox(height: 5),
-            Text(
-              title,
-              textAlign: TextAlign.center,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10.5,
-                fontWeight: active ? FontWeight.w800 : FontWeight.w600,
-                color: active ? Colors.white : const Color(0xFF94A3B8),
+            const SizedBox(height: 4),
+            SizedBox(
+              width: double.infinity,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.center,
+                child: Text(
+                  title,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  style: TextStyle(
+                    fontSize: 10.0,
+                    fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                    color: active ? Colors.white : const Color(0xFF94A3B8),
+                    letterSpacing: -0.2,
+                  ),
+                ),
               ),
             ),
-            const SizedBox(height: 3),
+            const SizedBox(height: 4),
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
               decoration: BoxDecoration(
-                color: active ? activeColor.withOpacity(0.25) : const Color(0xFF1E293B),
+                color: active ? activeColor.withOpacity(0.22) : const Color(0xFF1E293B),
                 borderRadius: BorderRadius.circular(6),
               ),
-              child: Text(
-                badge,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 9.5,
-                  fontWeight: FontWeight.w700,
-                  color: active ? activeColor : const Color(0xFFCBD5E1),
+              child: SizedBox(
+                width: double.infinity,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.center,
+                  child: Text(
+                    badge,
+                    maxLines: 1,
+                    style: TextStyle(
+                      fontSize: 9.0,
+                      fontWeight: FontWeight.w700,
+                      color: active ? activeColor : const Color(0xFFCBD5E1),
+                    ),
+                  ),
                 ),
               ),
             ),
