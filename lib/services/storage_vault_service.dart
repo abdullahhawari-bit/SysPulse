@@ -123,6 +123,11 @@ class VaultFileItem {
   final bool isDuplicateCopy;
   final bool isStale;
   final bool isLarge;
+  final bool isSocialMedia;
+  final String? socialType; // 'sent', 'voice_note', 'status', 'chat_media'
+  final bool isScreenshot;
+  final bool isOldScreenshot;
+  final bool isBurst;
 
   const VaultFileItem({
     required this.id,
@@ -136,6 +141,11 @@ class VaultFileItem {
     this.isDuplicateCopy = false,
     this.isStale = false,
     this.isLarge = false,
+    this.isSocialMedia = false,
+    this.socialType,
+    this.isScreenshot = false,
+    this.isOldScreenshot = false,
+    this.isBurst = false,
   });
 
   String get formattedSize {
@@ -167,6 +177,9 @@ class StorageVaultSummary {
   final List<VaultFileItem> staleFiles;
   final List<VaultFileItem> largeFiles;
   final List<VaultFileItem> allFiles;
+  final List<VaultFileItem> socialMediaFiles;
+  final List<VaultFileItem> screenshotFiles;
+  final List<VaultFileItem> burstFiles;
 
   const StorageVaultSummary({
     required this.totalBytes,
@@ -178,6 +191,9 @@ class StorageVaultSummary {
     required this.staleFiles,
     required this.largeFiles,
     required this.allFiles,
+    required this.socialMediaFiles,
+    required this.screenshotFiles,
+    required this.burstFiles,
   });
 
   int get totalDuplicateWasteBytes {
@@ -197,6 +213,15 @@ class StorageVaultSummary {
 
   int get totalLargeBytes =>
       largeFiles.fold(0, (sum, item) => sum + item.sizeBytes);
+
+  int get totalSocialMediaBytes =>
+      socialMediaFiles.fold(0, (sum, item) => sum + item.sizeBytes);
+
+  int get totalScreenshotBytes =>
+      screenshotFiles.fold(0, (sum, item) => sum + item.sizeBytes);
+
+  int get totalBurstBytes =>
+      burstFiles.fold(0, (sum, item) => sum + item.sizeBytes);
 
   double get usedPercentage {
     if (totalBytes <= 0) return 0.0;
@@ -383,6 +408,9 @@ class StorageVaultService {
     final dupGroups = <List<VaultFileItem>>[];
     final staleFiles = <VaultFileItem>[];
     final largeFiles = <VaultFileItem>[];
+    final socialMediaFiles = <VaultFileItem>[];
+    final screenshotFiles = <VaultFileItem>[];
+    final burstFiles = <VaultFileItem>[];
 
     final rawFiles = raw['files'] as List<dynamic>? ?? const [];
     for (final rf in rawFiles) {
@@ -400,10 +428,18 @@ class StorageVaultService {
         isDuplicateCopy: m['isDuplicateCopy'] == true,
         isStale: m['isStale'] == true,
         isLarge: m['isLarge'] == true,
+        isSocialMedia: m['isSocialMedia'] == true,
+        socialType: m['socialType'] as String?,
+        isScreenshot: m['isScreenshot'] == true,
+        isOldScreenshot: m['isOldScreenshot'] == true,
+        isBurst: m['isBurst'] == true,
       );
       allFiles.add(item);
       if (item.isStale) staleFiles.add(item);
       if (item.isLarge) largeFiles.add(item);
+      if (item.isSocialMedia) socialMediaFiles.add(item);
+      if (item.isScreenshot) screenshotFiles.add(item);
+      if (item.isBurst) burstFiles.add(item);
     }
 
     final rawGroups = raw['duplicateGroups'] as List<dynamic>? ?? const [];
@@ -422,6 +458,11 @@ class StorageVaultService {
           hash: m['hash'] as String?,
           duplicateGroupId: m['duplicateGroupId'] as String?,
           isDuplicateCopy: m['isDuplicateCopy'] == true,
+          isSocialMedia: m['isSocialMedia'] == true,
+          socialType: m['socialType'] as String?,
+          isScreenshot: m['isScreenshot'] == true,
+          isOldScreenshot: m['isOldScreenshot'] == true,
+          isBurst: m['isBurst'] == true,
         ));
       }
       if (groupList.isNotEmpty) dupGroups.add(groupList);
@@ -448,6 +489,9 @@ class StorageVaultService {
       staleFiles: staleFiles,
       largeFiles: largeFiles,
       allFiles: allFiles,
+      socialMediaFiles: socialMediaFiles,
+      screenshotFiles: screenshotFiles,
+      burstFiles: burstFiles,
     );
   }
 
@@ -544,6 +588,9 @@ class StorageVaultService {
       staleFiles: mockItems,
       largeFiles: mockItems,
       allFiles: mockItems,
+      socialMediaFiles: mockItems,
+      screenshotFiles: mockItems,
+      burstFiles: mockItems,
     );
   }
 }

@@ -884,25 +884,38 @@ class MainActivity : FlutterActivity() {
     // ========================================================================
 
     private fun scanStorageVault(staleDays: Int): Map<String, Any> {
-        val allFiles = mutableListOf<Map<String, Any>>()
+        val allFiles = mutableListOf<MutableMap<String, Any>>()
         val sizeGroupMap = mutableMapOf<Long, MutableList<MutableMap<String, Any>>>()
-        val staleThresholdMillis = System.currentTimeMillis() - (staleDays * 86_400_000L)
-        val largeThresholdBytes = 50L * 1024L * 1024L
+        val now = System.currentTimeMillis()
+        val staleThresholdMillis = now - (staleDays * 86_400_000L)
+        val screenshotStaleThreshold = now - (30L * 86_400_000L)
+        val largeThresholdBytes = 25L * 1024L * 1024L
 
-        val targetDirs = listOfNotNull(
+        val rootStorage = Environment.getExternalStorageDirectory()
+        val whatsapp1 = File(rootStorage, "Android/media/com.whatsapp/WhatsApp/Media")
+        val whatsapp2 = File(rootStorage, "WhatsApp/Media")
+        val telegram1 = File(rootStorage, "Telegram")
+        val telegram2 = File(rootStorage, "Android/media/org.telegram.messenger")
+
+        val targetDirs = linkedSetOf<File>()
+        listOfNotNull(
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_PICTURES),
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DCIM),
             Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MOVIES),
-            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC)
-        )
+            Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_MUSIC),
+            whatsapp1.takeIf { it.exists() && it.canRead() },
+            whatsapp2.takeIf { it.exists() && it.canRead() },
+            telegram1.takeIf { it.exists() && it.canRead() },
+            telegram2.takeIf { it.exists() && it.canRead() }
+        ).forEach { if (it.exists()) targetDirs.add(it) }
 
         fun categorizeExtension(ext: String): String {
             return when (ext.lowercase(Locale.ROOT)) {
                 "jpg", "jpeg", "png", "webp", "gif", "heic", "svg" -> "image"
                 "mp4", "mkv", "mov", "avi", "3gp", "webm" -> "video"
-                "mp3", "m4a", "wav", "aac", "ogg", "flac" -> "audio"
+                "mp3", "m4a", "wav", "aac", "ogg", "flac", "opus" -> "audio"
                 "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt" -> "document"
                 "apk" -> "apk"
                 "zip", "rar", "7z", "tar", "gz" -> "archive"
@@ -911,11 +924,14 @@ class MainActivity : FlutterActivity() {
         }
 
         fun scanDirRecursive(dir: File, depth: Int = 0) {
-            if (depth > 4 || !dir.exists() || !dir.canRead()) return
+            if (depth > 5 || !dir.exists() || !dir.canRead()) return
             val children = dir.listFiles() ?: return
             for (f in children) {
                 if (f.isDirectory) {
-                    if (!f.name.startsWith(".")) scanDirRecursive(f, depth + 1)
+                    val name = f.name
+                    if (!name.startsWith(".") || name.equals(".Statuses", ignoreCase = true)) {
+                        scanDirRecursive(f, depth + 1)
+                    }
                 } else if (f.isFile && f.length() > 0) {
                     val length = f.length()
                     val lastMod = f.lastModified()
@@ -923,6 +939,29 @@ class MainActivity : FlutterActivity() {
                     val cat = categorizeExtension(ext)
                     val isStale = lastMod < staleThresholdMillis
                     val isLarge = length >= largeThresholdBytes
+
+                    val pathLower = f.absolutePath.lowercase(Locale.ROOT)
+                    val nameLower = f.name.lowercase(Locale.ROOT)
+
+                    val isWhatsApp = pathLower.contains("whatsapp")
+                    val isTelegram = pathLower.contains("telegram")
+                    val isSocialMedia = isWhatsApp || isTelegram
+
+                    val isSentMedia = isSocialMedia && (pathLower.contains("/sent") || pathLower.contains("\\sent"))
+                    val isVoiceNote = isWhatsApp && (pathLower.contains("voice note") || pathLower.contains("whatsapp audio") || ext.equals("opus", ignoreCase = true))
+                    val isStatusCache = isWhatsApp && pathLower.contains(".statuses")
+
+                    val socialType = when {
+                        isSentMedia -> "sent"
+                        isVoiceNote -> "voice_note"
+                        isStatusCache -> "status"
+                        isSocialMedia -> "chat_media"
+                        else -> ""
+                    }
+
+                    val isScreenshot = pathLower.contains("screenshot") || nameLower.startsWith("screenshot")
+                    val isOldScreenshot = isScreenshot && (lastMod < screenshotStaleThreshold)
+                    val isBurstName = nameLower.contains("burst") || nameLower.contains("_cover")
 
                     val itemMap = mutableMapOf<String, Any>(
                         "id" to f.absolutePath,
@@ -933,7 +972,12 @@ class MainActivity : FlutterActivity() {
                         "category" to cat,
                         "isStale" to isStale,
                         "isLarge" to isLarge,
-                        "isDuplicateCopy" to false
+                        "isDuplicateCopy" to false,
+                        "isSocialMedia" to isSocialMedia,
+                        "socialType" to socialType,
+                        "isScreenshot" to isScreenshot,
+                        "isOldScreenshot" to isOldScreenshot,
+                        "isBurst" to isBurstName
                     )
 
                     allFiles.add(itemMap)
@@ -946,6 +990,24 @@ class MainActivity : FlutterActivity() {
 
         for (d in targetDirs) {
             scanDirRecursive(d)
+        }
+
+        // Group Burst / Rapid-Succession Photos (photos taken within 4.5s in same folder)
+        val imageFiles = allFiles.filter { it["category"] == "image" }
+        val folderGroups = imageFiles.groupBy { File(it["path"] as String).parent ?: "" }
+        for ((_, group) in folderGroups) {
+            if (group.size > 1) {
+                val sorted = group.sortedBy { (it["lastModified"] as Long) }
+                for (i in 1 until sorted.size) {
+                    val prev = sorted[i - 1]
+                    val curr = sorted[i]
+                    val diff = (curr["lastModified"] as Long) - (prev["lastModified"] as Long)
+                    if (diff in 0..4500L) {
+                        prev["isBurst"] = true
+                        curr["isBurst"] = true
+                    }
+                }
+            }
         }
 
         val duplicateGroups = mutableListOf<List<Map<String, Any>>>()

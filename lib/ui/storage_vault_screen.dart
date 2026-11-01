@@ -18,7 +18,9 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
   StorageVaultSummary? _summary;
   bool _loading = true;
   final int _staleDays = 60;
-  String _activeTab = 'duplicates'; // 'duplicates', 'stale', 'large', 'all'
+  String _activeTab = 'duplicates'; // 'duplicates', 'social', 'screenshots', 'stale', 'large', 'all'
+  String _socialSubFilter = 'all'; // 'all', 'sent', 'voice_notes', 'status'
+  String _screenshotSubFilter = 'all'; // 'all', 'old', 'burst'
   final Set<String> _selectedFileIds = {};
 
   @override
@@ -48,6 +50,20 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
           }
         }
       }
+    } else if (_activeTab == 'social') {
+      // Auto-select sent duplicates & status caches (safe to clean!)
+      for (final f in summary.socialMediaFiles) {
+        if (f.socialType == 'sent' || f.socialType == 'status') {
+          _selectedFileIds.add(f.id);
+        }
+      }
+    } else if (_activeTab == 'screenshots') {
+      // Auto-select old screenshots > 30 days
+      for (final f in summary.screenshotFiles) {
+        if (f.isOldScreenshot) {
+          _selectedFileIds.add(f.id);
+        }
+      }
     } else if (_activeTab == 'stale') {
       for (final file in summary.staleFiles) {
         _selectedFileIds.add(file.id);
@@ -64,6 +80,39 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
           list.addAll(g);
         }
         return list;
+
+      case 'social':
+        switch (_socialSubFilter) {
+          case 'sent':
+            return _summary!.socialMediaFiles
+                .where((f) => f.socialType == 'sent')
+                .toList();
+          case 'voice_notes':
+            return _summary!.socialMediaFiles
+                .where((f) => f.socialType == 'voice_note')
+                .toList();
+          case 'status':
+            return _summary!.socialMediaFiles
+                .where((f) => f.socialType == 'status')
+                .toList();
+          case 'all':
+          default:
+            return _summary!.socialMediaFiles;
+        }
+
+      case 'screenshots':
+        switch (_screenshotSubFilter) {
+          case 'old':
+            return _summary!.screenshotFiles
+                .where((f) => f.isOldScreenshot)
+                .toList();
+          case 'burst':
+            return _summary!.burstFiles;
+          case 'all':
+          default:
+            return _summary!.screenshotFiles;
+        }
+
       case 'stale':
         return _summary!.staleFiles;
       case 'large':
@@ -429,6 +478,22 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
           ),
           const SizedBox(height: 8),
           _buildVerticalRailTab(
+            key: 'social',
+            title: 'Social Media',
+            icon: Icons.chat_bubble_outline_rounded,
+            badge: _formatBytes(_summary!.totalSocialMediaBytes),
+            activeColor: const Color(0xFF10B981),
+          ),
+          const SizedBox(height: 8),
+          _buildVerticalRailTab(
+            key: 'screenshots',
+            title: 'Screenshots',
+            icon: Icons.screenshot_monitor_rounded,
+            badge: _formatBytes(_summary!.totalScreenshotBytes),
+            activeColor: const Color(0xFFFB7185),
+          ),
+          const SizedBox(height: 8),
+          _buildVerticalRailTab(
             key: 'stale',
             title: 'Dormant',
             icon: Icons.snooze_rounded,
@@ -449,7 +514,7 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
             title: 'All Files',
             icon: Icons.folder_copy_rounded,
             badge: '${_summary!.allFiles.length}',
-            activeColor: const Color(0xFF10B981),
+            activeColor: const Color(0xFF06B6D4),
           ),
         ],
       ),
@@ -556,6 +621,12 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     switch (_activeTab) {
       case 'duplicates':
         sectionTitle = 'Duplicates (${files.length})';
+        break;
+      case 'social':
+        sectionTitle = 'WhatsApp & Telegram (${files.length})';
+        break;
+      case 'screenshots':
+        sectionTitle = 'Screenshots & Bursts (${files.length})';
         break;
       case 'stale':
         sectionTitle = 'Dormant 60d+ (${files.length})';
@@ -668,7 +739,95 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
               ),
             ],
           ),
+
+          // Interactive Sub-filter Chips for Social Media & Screenshots
+          if (_activeTab == 'social') ...[
+            const SizedBox(height: 7),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildSubFilterChip('All Media', 'all', _socialSubFilter == 'all',
+                      () => setState(() => _socialSubFilter = 'all'), const Color(0xFF10B981)),
+                  const SizedBox(width: 5),
+                  _buildSubFilterChip('Sent Copies', 'sent', _socialSubFilter == 'sent',
+                      () => setState(() => _socialSubFilter = 'sent'), const Color(0xFFFB7185)),
+                  const SizedBox(width: 5),
+                  _buildSubFilterChip('Voice Notes', 'voice_notes', _socialSubFilter == 'voice_notes',
+                      () => setState(() => _socialSubFilter = 'voice_notes'), const Color(0xFFF59E0B)),
+                  const SizedBox(width: 5),
+                  _buildSubFilterChip('Status Cache', 'status', _socialSubFilter == 'status',
+                      () => setState(() => _socialSubFilter = 'status'), const Color(0xFF38BDF8)),
+                ],
+              ),
+            ),
+          ] else if (_activeTab == 'screenshots') ...[
+            const SizedBox(height: 7),
+            SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                children: [
+                  _buildSubFilterChip('All (${s.screenshotFiles.length})', 'all',
+                      _screenshotSubFilter == 'all',
+                      () => setState(() => _screenshotSubFilter = 'all'), const Color(0xFFFB7185)),
+                  const SizedBox(width: 5),
+                  _buildSubFilterChip('Older >30d', 'old',
+                      _screenshotSubFilter == 'old',
+                      () => setState(() => _screenshotSubFilter = 'old'), const Color(0xFFF59E0B)),
+                  const SizedBox(width: 5),
+                  _buildSubFilterChip('Burst Shots', 'burst',
+                      _screenshotSubFilter == 'burst',
+                      () => setState(() => _screenshotSubFilter = 'burst'), const Color(0xFFA855F7)),
+                ],
+              ),
+            ),
+          ],
         ],
+      ),
+    );
+  }
+
+  Widget _buildSubFilterChip(
+      String label, String key, bool active, VoidCallback onTap, Color accent) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3.5),
+        decoration: BoxDecoration(
+          color: active ? accent.withOpacity(0.2) : const Color(0xFF1E293B),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: active ? accent : const Color(0xFF334155),
+            width: active ? 1.2 : 1.0,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10,
+            fontWeight: active ? FontWeight.w700 : FontWeight.w500,
+            color: active ? Colors.white : const Color(0xFF94A3B8),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCardTag(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+      decoration: BoxDecoration(
+        color: color.withOpacity(0.2),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 8,
+          fontWeight: FontWeight.w700,
+          color: color,
+        ),
       ),
     );
   }
@@ -787,21 +946,22 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
                             ),
                             if (file.isDuplicateCopy) ...[
                               const SizedBox(width: 5),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFB7185).withOpacity(0.2),
-                                  borderRadius: BorderRadius.circular(4),
-                                ),
-                                child: const Text(
-                                  'Duplicate',
-                                  style: TextStyle(
-                                    fontSize: 8,
-                                    fontWeight: FontWeight.w700,
-                                    color: Color(0xFFFB7185),
-                                  ),
-                                ),
-                              ),
+                              _buildCardTag('Duplicate', const Color(0xFFFB7185)),
+                            ] else if (file.socialType == 'sent') ...[
+                              const SizedBox(width: 5),
+                              _buildCardTag('Sent Copy', const Color(0xFFFB7185)),
+                            ] else if (file.socialType == 'voice_note') ...[
+                              const SizedBox(width: 5),
+                              _buildCardTag('Voice Note', const Color(0xFFF59E0B)),
+                            ] else if (file.socialType == 'status') ...[
+                              const SizedBox(width: 5),
+                              _buildCardTag('Status', const Color(0xFF38BDF8)),
+                            ] else if (file.isOldScreenshot) ...[
+                              const SizedBox(width: 5),
+                              _buildCardTag('Old Shot', const Color(0xFFFB7185)),
+                            ] else if (file.isBurst) ...[
+                              const SizedBox(width: 5),
+                              _buildCardTag('Burst', const Color(0xFFA855F7)),
                             ],
                           ],
                         ),
