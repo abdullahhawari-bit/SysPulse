@@ -1,5 +1,10 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import '../services/storage_vault_service.dart';
+
+// ============================================================================
+// STORAGE VAULT SCREEN (100% ENGLISH • UNCLUTTERED • VERTICAL RAIL LAYOUT)
+// ============================================================================
 
 class StorageVaultScreen extends StatefulWidget {
   const StorageVaultScreen({super.key});
@@ -29,25 +34,24 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     setState(() {
       _summary = data;
       _loading = false;
-      _autoSelectDuplicates(data);
+      _autoSelectCurrentTab(data);
     });
   }
 
-  void _autoSelectDuplicates(StorageVaultSummary summary) {
+  void _autoSelectCurrentTab(StorageVaultSummary summary) {
     _selectedFileIds.clear();
-    for (final group in summary.duplicateGroups) {
-      if (group.length > 1) {
-        for (var i = 1; i < group.length; i++) {
-          _selectedFileIds.add(group[i].id);
+    if (_activeTab == 'duplicates') {
+      for (final group in summary.duplicateGroups) {
+        if (group.length > 1) {
+          for (var i = 1; i < group.length; i++) {
+            _selectedFileIds.add(group[i].id);
+          }
         }
       }
-    }
-  }
-
-  void _autoSelectStale(StorageVaultSummary summary) {
-    _selectedFileIds.clear();
-    for (final file in summary.staleFiles) {
-      _selectedFileIds.add(file.id);
+    } else if (_activeTab == 'stale') {
+      for (final file in summary.staleFiles) {
+        _selectedFileIds.add(file.id);
+      }
     }
   }
 
@@ -102,6 +106,203 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     });
   }
 
+  // --- ACTIONS: PREVIEW FILE ---
+  void _openFilePreviewModal(VaultFileItem file) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: const Color(0xFF0F172A),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+      ),
+      builder: (ctx) => _FilePreviewModal(
+        file: file,
+        onDeleteRequested: () {
+          Navigator.pop(ctx);
+          _confirmDeleteSingleFile(file);
+        },
+        onUninstallRequested: () {
+          Navigator.pop(ctx);
+          _confirmUninstallApp(file);
+        },
+      ),
+    );
+  }
+
+  // --- ACTIONS: DELETE SINGLE FILE ---
+  void _confirmDeleteSingleFile(VaultFileItem file) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Color(0xFF1E293B)),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_forever_rounded, color: Color(0xFFFB7185), size: 22),
+            SizedBox(width: 8),
+            Text(
+              'Delete File?',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to permanently delete:\n"${file.name}"?\n\nThis will free up ${file.formattedSize} immediately.',
+          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFB7185),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              await _service.deleteSingleFile(file);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('Deleted "${file.name}" (${file.formattedSize} freed)'),
+                ),
+              );
+              _loadVaultData();
+            },
+            child: const Text('Delete Permanently'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- ACTIONS: BATCH DELETE SELECTED FILES ---
+  void _confirmDeleteSelectedFiles() {
+    final selectedFiles = _summary!.allFiles
+        .where((f) => _selectedFileIds.contains(f.id))
+        .toList();
+
+    if (selectedFiles.isEmpty) return;
+
+    final freedStr = _formatBytes(_selectedTotalBytes);
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Color(0xFF1E293B)),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.delete_sweep_rounded, color: Color(0xFFFB7185), size: 24),
+            const SizedBox(width: 8),
+            Text(
+              'Delete ${selectedFiles.length} Files?',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'Are you sure you want to permanently delete all ${selectedFiles.length} selected files?\n\nReclaimed storage: $freedStr.\nThis action cannot be undone.',
+          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFB7185),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              final res = await _service.deleteArchivedFiles(selectedFiles);
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(
+                    'Deleted ${res['deletedCount']} files! Reclaimed ${_formatBytes(res['freedBytes'] as int)} 🎉',
+                  ),
+                ),
+              );
+              _loadVaultData();
+            },
+            child: const Text('Delete All'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- ACTIONS: UNINSTALL APP ---
+  void _confirmUninstallApp(VaultFileItem file) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: Color(0xFF1E293B)),
+        ),
+        title: const Row(
+          children: [
+            Icon(Icons.delete_forever_rounded, color: Color(0xFFFB7185), size: 22),
+            SizedBox(width: 8),
+            Text(
+              'Uninstall App?',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'SysPulse will open the Android system uninstaller for this APK package (${file.name}).\nDo you want to proceed?',
+          style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: Color(0xFF64748B))),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFFFB7185),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _service.openFilePreview(file);
+            },
+            child: const Text('Open Uninstaller'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // --- ACTIONS: COMPRESS & CLOUD OFFLOAD ---
   void _showCompressAndOffloadModal() {
     final selectedFiles = _summary!.allFiles
         .where((f) => _selectedFileIds.contains(f.id))
@@ -140,22 +341,22 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
       appBar: AppBar(
         backgroundColor: const Color(0xFF030712),
         elevation: 0,
-        titleSpacing: 16,
+        titleSpacing: 14,
         title: const Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Storage Vault & Archiver',
+              'Storage Vault & Cleaner',
               style: TextStyle(
-                fontSize: 17,
+                fontSize: 16.5,
                 fontWeight: FontWeight.w700,
                 color: Colors.white,
                 letterSpacing: -0.3,
               ),
             ),
             Text(
-              'Duplicate Cleaner & Cloud Backup',
-              style: TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+              'Smart Cleanup • Duplicate Scanner • Cloud Archiver',
+              style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
             ),
           ],
         ),
@@ -174,366 +375,475 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
             )
           : Stack(
               children: [
-                ListView(
-                  padding: const EdgeInsets.fromLTRB(14, 6, 14, 115),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    _buildCompactOverviewCard(_summary!),
-                    const SizedBox(height: 12),
-                    _buildTabPills(),
-                    const SizedBox(height: 12),
-                    _buildSectionHeader(),
-                    const SizedBox(height: 8),
-                    ..._buildFileList(),
+                    // LEFT COLUMN: VERTICAL NAVIGATION RAIL TABS
+                    _buildLeftVerticalRail(),
+
+                    // RIGHT COLUMN: EXPANDED CONTENT AREA
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          _buildRightHeader(),
+                          Expanded(
+                            child: _buildRightFileList(),
+                          ),
+                          // Space for floating sticky action bar
+                          const SizedBox(height: 70),
+                        ],
+                      ),
+                    ),
                   ],
                 ),
+
+                // PERSISTENT FLOATING BOTTOM ACTION BAR
                 _buildStickyBottomBar(),
               ],
             ),
     );
   }
 
-  Widget _buildCompactOverviewCard(StorageVaultSummary s) {
-    final usedGb = (s.usedBytes / (1024 * 1024 * 1024)).toStringAsFixed(1);
-    final totalGb = (s.totalBytes / (1024 * 1024 * 1024)).toStringAsFixed(0);
-    final pct = (s.usedPercentage * 100).toInt();
-
+  // ==========================================================================
+  // LEFT COLUMN: VERTICAL RAIL FOR DUPLICATES, DORMANT, LARGE, ALL FILES
+  // ==========================================================================
+  Widget _buildLeftVerticalRail() {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: const Color(0xFF0F172A),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFF1E293B)),
+      width: 90,
+      decoration: const BoxDecoration(
+        color: Color(0xFF090D16),
+        border: Border(
+          right: BorderSide(color: Color(0xFF1E293B)),
+        ),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      child: ListView(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  const Icon(Icons.storage_rounded, size: 18, color: Color(0xFF38BDF8)),
-                  const SizedBox(width: 8),
-                  Text(
-                    'Storage: $usedGb GB / $totalGb GB',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      fontWeight: FontWeight.w700,
-                      color: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                decoration: BoxDecoration(
-                  color: const Color(0xFF38BDF8).withOpacity(0.12),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Text(
-                  '$pct% used',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w700,
-                    color: Color(0xFF38BDF8),
-                  ),
-                ),
-              ),
-            ],
+          _buildVerticalRailTab(
+            key: 'duplicates',
+            title: 'Duplicates',
+            icon: Icons.copy_all_rounded,
+            badge: _formatBytes(_summary!.totalDuplicateWasteBytes),
+            activeColor: const Color(0xFF38BDF8),
           ),
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(6),
-            child: LinearProgressIndicator(
-              value: s.usedPercentage,
-              minHeight: 6,
-              backgroundColor: const Color(0xFF1E293B),
-              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
-            ),
+          const SizedBox(height: 8),
+          _buildVerticalRailTab(
+            key: 'stale',
+            title: 'Dormant',
+            icon: Icons.snooze_rounded,
+            badge: _formatBytes(_summary!.totalStaleBytes),
+            activeColor: const Color(0xFFF59E0B),
           ),
-          const SizedBox(height: 10),
-          SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            child: Row(
-              children: VaultFileCategory.values.map((cat) {
-                final bytes = s.categoryBytes[cat] ?? 0;
-                final count = s.categoryCounts[cat] ?? 0;
-                if (count == 0 && bytes == 0) return const SizedBox.shrink();
-                return Container(
-                  margin: const EdgeInsets.only(right: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1E293B).withOpacity(0.6),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: cat.color.withOpacity(0.2)),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(cat.icon, size: 12, color: cat.color),
-                      const SizedBox(width: 5),
-                      Text(
-                        '${cat.displayName}: ${_formatBytes(bytes)}',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w600,
-                          color: Color(0xFFE2E8F0),
-                        ),
-                      ),
-                    ],
-                  ),
-                );
-              }).toList(),
-            ),
+          const SizedBox(height: 8),
+          _buildVerticalRailTab(
+            key: 'large',
+            title: 'Large Files',
+            icon: Icons.fitness_center_rounded,
+            badge: _formatBytes(_summary!.totalLargeBytes),
+            activeColor: const Color(0xFFA855F7),
+          ),
+          const SizedBox(height: 8),
+          _buildVerticalRailTab(
+            key: 'all',
+            title: 'All Files',
+            icon: Icons.folder_copy_rounded,
+            badge: '${_summary!.allFiles.length}',
+            activeColor: const Color(0xFF10B981),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildTabPills() {
-    return Row(
-      children: [
-        _buildPillTab('duplicates', 'Duplicates', _formatBytes(_summary!.totalDuplicateWasteBytes)),
-        const SizedBox(width: 6),
-        _buildPillTab('stale', 'Dormant', _formatBytes(_summary!.totalStaleBytes)),
-        const SizedBox(width: 6),
-        _buildPillTab('large', 'Large Files', _formatBytes(_summary!.totalLargeBytes)),
-        const SizedBox(width: 6),
-        _buildPillTab('all', 'All Files', '${_summary!.allFiles.length}'),
-      ],
-    );
-  }
-
-  Widget _buildPillTab(String key, String title, String sub) {
+  Widget _buildVerticalRailTab({
+    required String key,
+    required String title,
+    required IconData icon,
+    required String badge,
+    required Color activeColor,
+  }) {
     final active = _activeTab == key;
-    return Expanded(
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            _activeTab = key;
-            if (key == 'duplicates') {
-              _autoSelectDuplicates(_summary!);
-            } else if (key == 'stale') {
-              _autoSelectStale(_summary!);
-            }
-          });
-        },
-        borderRadius: BorderRadius.circular(12),
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 8),
-          decoration: BoxDecoration(
-            color: active ? const Color(0xFF38BDF8).withOpacity(0.18) : const Color(0xFF0F172A),
-            borderRadius: BorderRadius.circular(12),
-            border: Border.all(
-              color: active ? const Color(0xFF38BDF8) : const Color(0xFF1E293B),
+    return InkWell(
+      onTap: () {
+        setState(() {
+          _activeTab = key;
+          _autoSelectCurrentTab(_summary!);
+        });
+      },
+      borderRadius: BorderRadius.circular(12),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 6),
+        decoration: BoxDecoration(
+          color: active ? activeColor.withOpacity(0.16) : const Color(0xFF0F172A),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(
+            color: active ? activeColor : const Color(0xFF1E293B),
+            width: active ? 1.5 : 1.0,
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 20,
+              color: active ? activeColor : const Color(0xFF94A3B8),
             ),
-          ),
-          child: Column(
-            children: [
-              Text(
-                title,
+            const SizedBox(height: 5),
+            Text(
+              title,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 10.5,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+                color: active ? Colors.white : const Color(0xFF94A3B8),
+              ),
+            ),
+            const SizedBox(height: 3),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+              decoration: BoxDecoration(
+                color: active ? activeColor.withOpacity(0.25) : const Color(0xFF1E293B),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                badge,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 9.5,
                   fontWeight: FontWeight.w700,
-                  color: active ? const Color(0xFF38BDF8) : Colors.white,
+                  color: active ? activeColor : const Color(0xFFCBD5E1),
                 ),
               ),
-              const SizedBox(height: 2),
-              Text(
-                sub,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 10,
-                  color: active ? const Color(0xFFBAE6FD) : const Color(0xFF64748B),
-                ),
-              ),
-            ],
-          ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  Widget _buildSectionHeader() {
+  // ==========================================================================
+  // RIGHT AREA: HEADER (COMPACT STORAGE BAR & SELECTION CONTROLS)
+  // ==========================================================================
+  Widget _buildRightHeader() {
+    final s = _summary!;
+    final usedGb = (s.usedBytes / (1024 * 1024 * 1024)).toStringAsFixed(1);
+    final totalGb = (s.totalBytes / (1024 * 1024 * 1024)).toStringAsFixed(0);
+    final pct = (s.usedPercentage * 100).toInt();
+
     final files = _getFilteredFiles();
     final allSelected = files.isNotEmpty && files.every((f) => _selectedFileIds.contains(f.id));
 
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        Text(
-          'Files (${files.length})',
-          style: const TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.w700,
-            color: Color(0xFFE2E8F0),
-          ),
-        ),
-        InkWell(
-          onTap: () {
-            setState(() {
-              if (allSelected) {
-                for (final f in files) {
-                  _selectedFileIds.remove(f.id);
-                }
-              } else {
-                for (final f in files) {
-                  _selectedFileIds.add(f.id);
-                }
-              }
-            });
-          },
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-            child: Row(
-              children: [
-                Icon(
-                  allSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
-                  size: 16,
-                  color: const Color(0xFF38BDF8),
-                ),
-                const SizedBox(width: 4),
-                Text(
-                  allSelected ? 'Deselect All' : 'Select All',
-                  style: const TextStyle(
-                    fontSize: 11.5,
-                    fontWeight: FontWeight.w600,
-                    color: Color(0xFF38BDF8),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ],
-    );
-  }
+    String sectionTitle;
+    switch (_activeTab) {
+      case 'duplicates':
+        sectionTitle = 'Duplicates (${files.length})';
+        break;
+      case 'stale':
+        sectionTitle = 'Dormant 60d+ (${files.length})';
+        break;
+      case 'large':
+        sectionTitle = 'Large Files >25MB (${files.length})';
+        break;
+      case 'all':
+      default:
+        sectionTitle = 'All Storage (${files.length})';
+        break;
+    }
 
-  List<Widget> _buildFileList() {
-    final files = _getFilteredFiles();
-    if (files.isEmpty) {
-      return [
-        Container(
-          padding: const EdgeInsets.all(28),
-          alignment: Alignment.center,
-          child: const Column(
+    return Container(
+      padding: const EdgeInsets.fromLTRB(10, 8, 10, 6),
+      decoration: const BoxDecoration(
+        color: Color(0xFF030712),
+        border: Border(bottom: BorderSide(color: Color(0xFF1E293B))),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Compact Storage Bar
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Icon(Icons.check_circle_outline_rounded, size: 40, color: Color(0xFF10B981)),
-              SizedBox(height: 10),
               Text(
-                'No files found in this category. Clean & optimized!',
-                style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
+                'Storage: $usedGb / $totalGb GB',
+                style: const TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFFE2E8F0),
+                ),
+              ),
+              Text(
+                '$pct% used',
+                style: const TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: Color(0xFF38BDF8),
+                ),
               ),
             ],
           ),
-        ),
-      ];
-    }
-
-    return files.map((file) {
-      final selected = _selectedFileIds.contains(file.id);
-      return Container(
-        margin: const EdgeInsets.only(bottom: 6),
-        decoration: BoxDecoration(
-          color: selected ? const Color(0xFF1E293B).withOpacity(0.5) : const Color(0xFF0F172A),
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: selected ? const Color(0xFF38BDF8).withOpacity(0.4) : const Color(0xFF1E293B),
+          const SizedBox(height: 5),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: s.usedPercentage,
+              minHeight: 5,
+              backgroundColor: const Color(0xFF1E293B),
+              valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
+            ),
           ),
-        ),
-        child: InkWell(
-          onTap: () => _toggleFileSelection(file.id),
-          borderRadius: BorderRadius.circular(12),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            child: Row(
-              children: [
-                Container(
-                  width: 36,
-                  height: 36,
-                  decoration: BoxDecoration(
-                    color: file.category.color.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(8),
+          const SizedBox(height: 8),
+
+          // Section Title & Select All Row
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Text(
+                  sectionTitle,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w800,
+                    color: Colors.white,
                   ),
-                  child: Icon(file.category.icon, color: file.category.color, size: 18),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+              ),
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    if (allSelected) {
+                      for (final f in files) {
+                        _selectedFileIds.remove(f.id);
+                      }
+                    } else {
+                      for (final f in files) {
+                        _selectedFileIds.add(f.id);
+                      }
+                    }
+                  });
+                },
+                borderRadius: BorderRadius.circular(6),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(
-                        file.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          fontSize: 12.5,
-                          fontWeight: FontWeight.w600,
-                          color: Colors.white,
-                        ),
+                      Icon(
+                        allSelected ? Icons.check_box_rounded : Icons.check_box_outline_blank_rounded,
+                        size: 15,
+                        color: const Color(0xFF38BDF8),
                       ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          Text(
-                            file.formattedSize,
-                            style: const TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: Color(0xFF38BDF8),
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            '• ${file.formattedAge}',
-                            style: const TextStyle(fontSize: 10.5, color: Color(0xFF64748B)),
-                          ),
-                          if (file.isDuplicateCopy) ...[
-                            const SizedBox(width: 6),
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1.5),
-                              decoration: BoxDecoration(
-                                color: const Color(0xFFFB7185).withOpacity(0.18),
-                                borderRadius: BorderRadius.circular(4),
-                              ),
-                              child: const Text(
-                                'Duplicate',
-                                style: TextStyle(
-                                  fontSize: 8.5,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFFFB7185),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ],
+                      const SizedBox(width: 4),
+                      Text(
+                        allSelected ? 'Deselect' : 'Select All',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Color(0xFF38BDF8),
+                        ),
                       ),
                     ],
                   ),
                 ),
-                Transform.scale(
-                  scale: 0.85,
-                  child: Checkbox(
-                    value: selected,
-                    activeColor: const Color(0xFF38BDF8),
-                    checkColor: const Color(0xFF020617),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-                    side: const BorderSide(color: Color(0xFF475569)),
-                    onChanged: (_) => _toggleFileSelection(file.id),
-                  ),
-                ),
-              ],
-            ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================================================
+  // RIGHT AREA: FILE LIST WITH IN-APP PREVIEW, DELETE & SELECT
+  // ==========================================================================
+  Widget _buildRightFileList() {
+    final files = _getFilteredFiles();
+    if (files.isEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(Icons.check_circle_outline_rounded, size: 42, color: Color(0xFF10B981)),
+              const SizedBox(height: 10),
+              Text(
+                'No files in this category.\nDevice is clean & optimized!',
+                textAlign: TextAlign.center,
+                style: TextStyle(fontSize: 12, color: Colors.blueGrey.shade300, height: 1.4),
+              ),
+            ],
           ),
         ),
       );
-    }).toList();
+    }
+
+    return ListView.builder(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 20),
+      itemCount: files.length,
+      itemBuilder: (context, index) {
+        final file = files[index];
+        final selected = _selectedFileIds.contains(file.id);
+        final isImage = file.category == VaultFileCategory.image;
+        final isApk = file.category == VaultFileCategory.apk;
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 6),
+          decoration: BoxDecoration(
+            color: selected ? const Color(0xFF1E293B).withOpacity(0.65) : const Color(0xFF0F172A),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: selected ? const Color(0xFF38BDF8).withOpacity(0.5) : const Color(0xFF1E293B),
+            ),
+          ),
+          child: InkWell(
+            onTap: () => _toggleFileSelection(file.id),
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
+              child: Row(
+                children: [
+                  // THUMBNAIL / AVATAR PREVIEW
+                  GestureDetector(
+                    onTap: () => _openFilePreviewModal(file),
+                    child: Container(
+                      width: 44,
+                      height: 44,
+                      decoration: BoxDecoration(
+                        color: file.category.color.withOpacity(0.12),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: file.category.color.withOpacity(0.25)),
+                      ),
+                      clipBehavior: Clip.antiAlias,
+                      child: isImage
+                          ? Image.file(
+                              File(file.path),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, __, ___) => Icon(
+                                file.category.icon,
+                                color: file.category.color,
+                                size: 20,
+                              ),
+                            )
+                          : Icon(
+                              file.category.icon,
+                              color: file.category.color,
+                              size: 20,
+                            ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+
+                  // FILE NAME & METADATA
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          file.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            Text(
+                              file.formattedSize,
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF38BDF8),
+                              ),
+                            ),
+                            const SizedBox(width: 5),
+                            Text(
+                              '• ${file.formattedAge}',
+                              style: const TextStyle(fontSize: 10, color: Color(0xFF64748B)),
+                            ),
+                            if (file.isDuplicateCopy) ...[
+                              const SizedBox(width: 5),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFFFB7185).withOpacity(0.2),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: const Text(
+                                  'Duplicate',
+                                  style: TextStyle(
+                                    fontSize: 8,
+                                    fontWeight: FontWeight.w700,
+                                    color: Color(0xFFFB7185),
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+
+                  // QUICK ACTION BUTTONS: PREVIEW, DELETE, UNINSTALL, CHECKBOX
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Preview icon button
+                      IconButton(
+                        tooltip: 'Preview File',
+                        icon: const Icon(Icons.remove_red_eye_outlined, size: 18, color: Color(0xFF94A3B8)),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        onPressed: () => _openFilePreviewModal(file),
+                      ),
+
+                      // Delete icon button
+                      IconButton(
+                        tooltip: 'Delete File',
+                        icon: const Icon(Icons.delete_outline_rounded, size: 18, color: Color(0xFFFB7185)),
+                        padding: EdgeInsets.zero,
+                        constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
+                        onPressed: () => _confirmDeleteSingleFile(file),
+                      ),
+
+                      // Selection Checkbox
+                      Transform.scale(
+                        scale: 0.8,
+                        child: Checkbox(
+                          value: selected,
+                          activeColor: const Color(0xFF38BDF8),
+                          checkColor: const Color(0xFF020617),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+                          side: const BorderSide(color: Color(0xFF475569)),
+                          onChanged: (_) => _toggleFileSelection(file.id),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
   }
 
+  // ==========================================================================
+  // PERSISTENT BOTTOM BAR (DELETE SELECTED & CLOUD OFFLOAD)
+  // ==========================================================================
   Widget _buildStickyBottomBar() {
     final count = _selectedFileIds.length;
     final totalSizeStr = _formatBytes(_selectedTotalBytes);
@@ -543,21 +853,21 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
       left: 0,
       right: 0,
       child: Container(
-        padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+        padding: const EdgeInsets.fromLTRB(14, 8, 14, 10),
         decoration: BoxDecoration(
-          color: const Color(0xFF0B132B).withOpacity(0.96),
+          color: const Color(0xFF090D16).withOpacity(0.96),
           border: const Border(top: BorderSide(color: Color(0xFF1E293B))),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.5),
-              blurRadius: 16,
-              offset: const Offset(0, -4),
+              color: Colors.black.withOpacity(0.6),
+              blurRadius: 12,
+              offset: const Offset(0, -3),
             ),
           ],
         ),
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
+            // Selected files counter & size
             Expanded(
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
@@ -565,12 +875,12 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
                 children: [
                   Text(
                     '$count files selected',
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                    style: const TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8)),
                   ),
                   Text(
                     totalSizeStr,
                     style: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 15,
                       fontWeight: FontWeight.w800,
                       color: Color(0xFF38BDF8),
                     ),
@@ -578,6 +888,21 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
                 ],
               ),
             ),
+
+            // Action: Delete Selected
+            IconButton(
+              tooltip: 'Delete Selected Files',
+              onPressed: count > 0 ? _confirmDeleteSelectedFiles : null,
+              style: IconButton.styleFrom(
+                backgroundColor: count > 0 ? const Color(0xFFFB7185).withOpacity(0.18) : const Color(0xFF1E293B),
+                foregroundColor: count > 0 ? const Color(0xFFFB7185) : const Color(0xFF475569),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              icon: const Icon(Icons.delete_sweep_rounded, size: 20),
+            ),
+            const SizedBox(width: 8),
+
+            // Action: Archive & Cloud Offload
             ElevatedButton.icon(
               onPressed: count > 0 ? _showCompressAndOffloadModal : null,
               style: ElevatedButton.styleFrom(
@@ -586,19 +911,228 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
                 disabledBackgroundColor: const Color(0xFF1E293B),
                 disabledForegroundColor: const Color(0xFF475569),
                 elevation: 0,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(10),
                 ),
               ),
-              icon: const Icon(Icons.cloud_upload_rounded, size: 18),
+              icon: const Icon(Icons.cloud_upload_rounded, size: 16),
               label: const Text(
-                'Archive & Offload',
-                style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w800),
+                'Archive & Cloud',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
               ),
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// FILE PREVIEW MODAL (IMAGES, VIDEOS, APKS, DOCS)
+// ============================================================================
+
+class _FilePreviewModal extends StatelessWidget {
+  final VaultFileItem file;
+  final VoidCallback onDeleteRequested;
+  final VoidCallback onUninstallRequested;
+
+  const _FilePreviewModal({
+    required this.file,
+    required this.onDeleteRequested,
+    required this.onUninstallRequested,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final isImage = file.category == VaultFileCategory.image;
+    final isVideo = file.category == VaultFileCategory.video;
+    final isApk = file.category == VaultFileCategory.apk;
+
+    return Container(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 24),
+      constraints: BoxConstraints(
+        maxHeight: MediaQuery.of(context).size.height * 0.82,
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Header Bar
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Row(
+                children: [
+                  Icon(file.category.icon, size: 20, color: file.category.color),
+                  const SizedBox(width: 8),
+                  Text(
+                    '${file.category.displayName} Preview',
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                ],
+              ),
+              IconButton(
+                icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8), size: 20),
+                onPressed: () => Navigator.pop(context),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+
+          // Main Visual Content
+          if (isImage)
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(14),
+                child: Container(
+                  color: Colors.black,
+                  child: InteractiveViewer(
+                    minScale: 0.8,
+                    maxScale: 4.0,
+                    child: Center(
+                      child: Image.file(
+                        File(file.path),
+                        fit: BoxFit.contain,
+                        errorBuilder: (_, __, ___) => const Center(
+                          child: Text(
+                            'Unable to render image preview.',
+                            style: TextStyle(color: Color(0xFF94A3B8)),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            )
+          else
+            Container(
+              padding: const EdgeInsets.all(28),
+              decoration: BoxDecoration(
+                color: const Color(0xFF030712),
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: const Color(0xFF1E293B)),
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(file.category.icon, size: 52, color: file.category.color),
+                  const SizedBox(height: 12),
+                  Text(
+                    file.name,
+                    textAlign: TextAlign.center,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    '${file.formattedSize} • ${file.formattedAge}',
+                    style: const TextStyle(fontSize: 11, color: Color(0xFF94A3B8)),
+                  ),
+                ],
+              ),
+            ),
+
+          const SizedBox(height: 14),
+
+          // File Details
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: const Color(0xFF030712),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: const Color(0xFF1E293B)),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  file.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.white),
+                ),
+                const SizedBox(height: 3),
+                Text(
+                  file.path,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(height: 14),
+
+          // Action Buttons Row
+          Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF38BDF8),
+                    foregroundColor: const Color(0xFF020617),
+                    padding: const EdgeInsets.symmetric(vertical: 11),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: Icon(
+                    isVideo
+                        ? Icons.play_arrow_rounded
+                        : (isApk ? Icons.android_rounded : Icons.open_in_new_rounded),
+                    size: 18,
+                  ),
+                  label: Text(
+                    isVideo
+                        ? 'Play Video'
+                        : (isApk ? 'Open / Install' : 'Open in System App'),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+                  ),
+                  onPressed: () {
+                    StorageVaultService.instance.openFilePreview(file);
+                  },
+                ),
+              ),
+              const SizedBox(width: 8),
+              if (isApk) ...[
+                ElevatedButton.icon(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFF59E0B),
+                    foregroundColor: const Color(0xFF020617),
+                    padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                  icon: const Icon(Icons.delete_sweep_rounded, size: 18),
+                  label: const Text('Uninstall', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
+                  onPressed: onUninstallRequested,
+                ),
+                const SizedBox(width: 8),
+              ],
+              IconButton(
+                tooltip: 'Delete File',
+                style: IconButton.styleFrom(
+                  backgroundColor: const Color(0xFFFB7185).withOpacity(0.18),
+                  foregroundColor: const Color(0xFFFB7185),
+                  padding: const EdgeInsets.all(11),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                ),
+                icon: const Icon(Icons.delete_forever_rounded, size: 20),
+                onPressed: onDeleteRequested,
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
@@ -705,7 +1239,7 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
               child: Column(
                 children: [
                   const CircularProgressIndicator(color: Color(0xFFA855F7)),
-                  const SizedBox(height: 14),
+                  SizedBox(height: 14),
                   Text(
                     'Exporting to ${_selectedProvider.displayName}...',
                     style: const TextStyle(fontSize: 13, color: Color(0xFFBAE6FD)),

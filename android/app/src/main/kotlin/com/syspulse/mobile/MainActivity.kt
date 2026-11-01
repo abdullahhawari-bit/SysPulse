@@ -110,6 +110,21 @@ class MainActivity : FlutterActivity() {
                         val paths = call.argument<List<String>>("filePaths") ?: emptyList()
                         deleteArchivedStorageFiles(paths)
                     }
+                    "deleteSingleFile" -> runAsync(result) {
+                        val path = call.argument<String>("filePath") ?: ""
+                        deleteSingleStorageFile(path)
+                    }
+                    "openFilePreview" -> {
+                        val path = call.argument<String>("filePath") ?: ""
+                        val mime = call.argument<String>("mimeType")
+                        val ok = openFileWithSystem(path, mime)
+                        result.success(ok)
+                    }
+                    "uninstallApp" -> {
+                        val pkg = call.argument<String>("packageName") ?: ""
+                        val ok = launchAppUninstaller(pkg)
+                        result.success(ok)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -1088,7 +1103,7 @@ class MainActivity : FlutterActivity() {
 
         if (!launched) {
             intent.setPackage(null)
-            val chooser = Intent.createChooser(intent, "ترحيل الأرشيف السحابي (SysPulse)")
+            val chooser = Intent.createChooser(intent, "SysPulse Cloud Archive Offload")
             mainHandler.post { startActivity(chooser) }
         }
 
@@ -1112,5 +1127,80 @@ class MainActivity : FlutterActivity() {
             "deletedCount" to count,
             "freedBytes" to freed
         )
+    }
+
+    private fun deleteSingleStorageFile(filePath: String): Boolean {
+        return try {
+            val f = File(filePath)
+            if (f.exists() && f.isFile) {
+                f.delete()
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openFileWithSystem(filePath: String, mimeType: String?): Boolean {
+        try {
+            val file = File(filePath)
+            if (!file.exists()) return false
+            val uri = FileProvider.getUriForFile(this, "$packageName.fileprovider", file)
+            val determinedMime = mimeType ?: getMimeTypeForPath(filePath)
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, determinedMime)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            mainHandler.post {
+                try {
+                    startActivity(intent)
+                } catch (_: Exception) {
+                    val genericIntent = Intent(Intent.ACTION_VIEW).apply {
+                        setDataAndType(uri, "*/*")
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(Intent.createChooser(genericIntent, "Open with..."))
+                }
+            }
+            return true
+        } catch (_: Exception) {
+            return false
+        }
+    }
+
+    private fun getMimeTypeForPath(path: String): String {
+        val ext = File(path).extension.lowercase(Locale.ROOT)
+        return when (ext) {
+            "jpg", "jpeg" -> "image/jpeg"
+            "png" -> "image/png"
+            "webp" -> "image/webp"
+            "gif" -> "image/gif"
+            "mp4", "mkv", "mov", "avi", "3gp", "webm" -> "video/*"
+            "mp3", "m4a", "wav", "aac", "ogg", "flac" -> "audio/*"
+            "pdf" -> "application/pdf"
+            "apk" -> "application/vnd.android.package-archive"
+            "zip" -> "application/zip"
+            "txt" -> "text/plain"
+            "doc", "docx" -> "application/msword"
+            "xls", "xlsx" -> "application/vnd.ms-excel"
+            else -> "*/*"
+        }
+    }
+
+    private fun launchAppUninstaller(packageNameToUninstall: String): Boolean {
+        if (packageNameToUninstall.isBlank()) return false
+        return try {
+            val intent = Intent(Intent.ACTION_DELETE).apply {
+                data = Uri.parse("package:$packageNameToUninstall")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            mainHandler.post { startActivity(intent) }
+            true
+        } catch (_: Exception) {
+            false
+        }
     }
 }

@@ -370,6 +370,26 @@ class DashboardBundle {
     required this.security,
     required this.calls,
   });
+
+  DashboardBundle copyWith({
+    NativePermissionsStatus? permissions,
+    List<OptimizationAlert>? alerts,
+    List<AppUsageRecord>? appUsage,
+    NetworkTelemetry? network,
+    BatteryTelemetry? battery,
+    SecurityAuditData? security,
+    CallAnalyticsData? calls,
+  }) {
+    return DashboardBundle(
+      permissions: permissions ?? this.permissions,
+      alerts: alerts ?? this.alerts,
+      appUsage: appUsage ?? this.appUsage,
+      network: network ?? this.network,
+      battery: battery ?? this.battery,
+      security: security ?? this.security,
+      calls: calls ?? this.calls,
+    );
+  }
 }
 
 // ============================================================================
@@ -810,6 +830,18 @@ class SysPulseNativeBridge {
         return Icons.apps_rounded;
     }
   }
+
+  Future<bool> uninstallApp(String packageName) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>(
+        'uninstallApp',
+        {'packageName': packageName},
+      );
+      return ok ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 // ============================================================================
@@ -831,25 +863,47 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
   bool _rescanningSecurity = false;
   String? _busyAlertId;
   int _navIndex = 0;
+  Timer? _liveTelemetryTimer;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadDashboard();
+    _startLiveSamplingTimer();
+  }
+
+  void _startLiveSamplingTimer() {
+    _liveTelemetryTimer?.cancel();
+    _liveTelemetryTimer =
+        Timer.periodic(const Duration(milliseconds: 1500), (_) async {
+      if (!mounted || _data == null) return;
+      // Only sample in real time when Home (0) or Network (2) tab is active
+      if (_navIndex != 0 && _navIndex != 2) return;
+      try {
+        final net = await _bridge.fetchNetworkStats();
+        if (!mounted) return;
+        setState(() {
+          _data = _data!.copyWith(network: net);
+        });
+      } catch (_) {}
+    });
   }
 
   @override
   void dispose() {
+    _liveTelemetryTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // Automatically refresh telemetry when returning from Android Usage Access Settings
     if (state == AppLifecycleState.resumed) {
       _loadDashboard();
+      _startLiveSamplingTimer();
+    } else if (state == AppLifecycleState.paused) {
+      _liveTelemetryTimer?.cancel();
     }
   }
 
@@ -1444,6 +1498,15 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                       ],
                     ),
                   ),
+                  const SizedBox(width: 6),
+                  IconButton(
+                    tooltip: 'Uninstall ${app.appName}',
+                    icon: const Icon(Icons.delete_outline_rounded,
+                        size: 19, color: AppPalette.coral),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
+                    onPressed: () => _showUninstallAppDialog(app),
+                  ),
                 ],
               ),
             );
@@ -1451,6 +1514,66 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
         ],
       ),
     );
+  }
+
+  void _showUninstallAppDialog(AppUsageRecord app) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: AppPalette.card,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: const BorderSide(color: AppPalette.border),
+        ),
+        title: Row(
+          children: [
+            const Icon(Icons.delete_sweep_rounded, color: AppPalette.coral, size: 24),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Uninstall ${app.appName}?',
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ),
+        content: Text(
+          'SysPulse will launch the Android package uninstaller for:\n"${app.packageName}".\n\nThis will remove the application and free up system storage & RAM.',
+          style: const TextStyle(fontSize: 13, color: AppPalette.textSecondary, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel', style: TextStyle(color: AppPalette.textMuted)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AppPalette.coral,
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onPressed: () {
+              Navigator.pop(ctx);
+              _bridge.uninstallApp(app.packageName);
+            },
+            child: const Text('Open Uninstaller'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  static String _formatThroughput(double mbps) {
+    if (mbps <= 0.0001) return '0.0 Kbps';
+    if (mbps < 0.1) {
+      return '${(mbps * 1000).toStringAsFixed(1)} Kbps';
+    }
+    if (mbps < 1.0) {
+      return '${(mbps * 1000).toStringAsFixed(0)} Kbps';
+    }
+    return '${mbps.toStringAsFixed(2)} Mbps';
   }
 
   // --- 2. NETWORK STATS ---
@@ -1472,7 +1595,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                 child: _TrafficStatBox(
                     title: 'DATA IN (RX)',
                     total: '${net.dataInGb.toStringAsFixed(2)} GB',
-                    rate: '${net.liveDownMbps.toStringAsFixed(1)} Mbps',
+                    rate: _formatThroughput(net.liveDownMbps),
                     icon: Icons.arrow_downward_rounded,
                     color: AppPalette.cyan)),
             const SizedBox(width: 10),
@@ -1480,16 +1603,29 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                 child: _TrafficStatBox(
                     title: 'DATA OUT (TX)',
                     total: '${net.dataOutGb.toStringAsFixed(2)} GB',
-                    rate: '${net.liveUpMbps.toStringAsFixed(1)} Mbps',
+                    rate: _formatThroughput(net.liveUpMbps),
                     icon: Icons.arrow_upward_rounded,
                     color: AppPalette.violet)),
           ]),
           const SizedBox(height: 15),
-          const Row(
+          Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Live Throughput (Mbps)', style: AppStyles.cardSub),
-              Row(children: [
+              Row(
+                children: [
+                  Container(
+                    width: 8,
+                    height: 8,
+                    decoration: const BoxDecoration(
+                      color: AppPalette.emerald,
+                      shape: BoxShape.circle,
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  const Text('Live Throughput (Real-Time)', style: AppStyles.cardSub),
+                ],
+              ),
+              const Row(children: [
                 _LegendDot(color: AppPalette.cyan, label: 'Data In'),
                 SizedBox(width: 12),
                 _LegendDot(color: AppPalette.violet, label: 'Data Out'),
@@ -2101,7 +2237,8 @@ class NetworkAreaChartPainter extends CustomPainter {
     }
     final merged = [...inbound, ...outbound];
     if (merged.length < 2) return;
-    final maxY = math.max(10.0, merged.reduce(math.max) * 1.15);
+    final peak = merged.isEmpty ? 0.0 : merged.reduce(math.max);
+    final maxY = math.max(0.08, peak * 1.25);
 
     _paintCurve(canvas, size, outbound, maxY, AppPalette.violet);
     _paintCurve(canvas, size, inbound, maxY, AppPalette.cyan);

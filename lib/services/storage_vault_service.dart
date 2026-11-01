@@ -338,6 +338,45 @@ class StorageVaultService {
     };
   }
 
+  Future<bool> deleteSingleFile(VaultFileItem file) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>(
+        'deleteSingleFile',
+        {'filePath': file.path},
+      );
+      return ok ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
+  Future<bool> openFilePreview(VaultFileItem file) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>(
+        'openFilePreview',
+        {
+          'filePath': file.path,
+          'mimeType': null,
+        },
+      );
+      return ok ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> uninstallApp(String packageName) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>(
+        'uninstallApp',
+        {'packageName': packageName},
+      );
+      return ok ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   StorageVaultSummary _parseNativeSummary(
       Map<String, dynamic> raw, int staleDays) {
     final allFiles = <VaultFileItem>[];
