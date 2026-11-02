@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 // ============================================================================
-// UNIFIED SYSTEM CONTROL HUB SCREEN
-// Categorized 1-Click Direct Controls + Deep Android Settings Wizard
+// UNIFIED SYSTEM CONTROL HUB SCREEN (100% ENGLISH • COLLAPSIBLE ACCORDION TREE)
+// Main Category Rectangles -> Indented Sub-Rectangles -> Direct & Guided Actions
 // ============================================================================
 
 class SystemControlHubScreen extends StatefulWidget {
@@ -18,10 +18,11 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
   static const MethodChannel _channel =
       MethodChannel('com.syspulse.mobile/telemetry');
 
-  // Palette matching SysPulse Dark Mode
+  // Palette matching SysPulse Dark Mode & Mockup
   static const Color _bg = Color(0xFF070B14);
   static const Color _card = Color(0xFF111927);
   static const Color _cardAlt = Color(0xFF192338);
+  static const Color _subCard = Color(0xFF162032);
   static const Color _border = Color(0xFF24324B);
   static const Color _cyan = Color(0xFF00E5FF);
   static const Color _violet = Color(0xFF8B5CF6);
@@ -33,14 +34,17 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
   static const Color _textSecondary = Color(0xFF94A3B8);
 
   bool _loading = true;
-  String _selectedCategory = 'all';
   String _searchQuery = '';
-  final Set<String> _expandedGuides = <String>{
-    'dev_options',
+
+  // Which Main Category Rectangles are expanded
+  final Set<String> _expandedGroups = <String>{
+    'direct_controls',
+  };
+
+  // Which Sub-Rectangles are expanded to show their step-by-step guide
+  final Set<String> _expandedItems = <String>{
     'screen_lock',
-    'honor_launch',
-    'date_time',
-    'wallpaper',
+    'dev_options',
   };
 
   // Live hardware & OS state
@@ -134,7 +138,8 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg),
-            backgroundColor: ok ? const Color(0xFF065F46) : const Color(0xFF92400E),
+            backgroundColor:
+                ok ? const Color(0xFF065F46) : const Color(0xFF92400E),
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
           ),
@@ -144,7 +149,7 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
     await _refreshHubState();
   }
 
-  Future<void> _openSettingTarget(String targetKey, String titleAr) async {
+  Future<void> _openSettingTarget(String targetKey, String title) async {
     HapticFeedback.selectionClick();
     try {
       await _channel.invokeMethod<bool>(
@@ -154,7 +159,7 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('تم فتح نافذة: $titleAr — اتبع إرشادات SysPulse للضبط'),
+            content: Text('Opened: $title — Follow SysPulse step-by-step guide'),
             backgroundColor: _cardAlt,
             behavior: SnackBarBehavior.floating,
             duration: const Duration(seconds: 2),
@@ -164,636 +169,736 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
     } catch (_) {}
   }
 
-  List<_HubCategoryMeta> get _categories => const [
-        _HubCategoryMeta('all', 'الكل • All', Icons.apps_rounded, _cyan),
-        _HubCategoryMeta('audio', 'الصوت والاهتزاز', Icons.volume_up_rounded, _emerald),
-        _HubCategoryMeta('display', 'الشاشة والخلفية', Icons.wb_sunny_rounded, _amber),
-        _HubCategoryMeta('security', 'الأمان وكلمة المرور', Icons.security_rounded, _coral),
-        _HubCategoryMeta('network', 'الشبكات والاتصالات', Icons.wifi_rounded, _blue),
-        _HubCategoryMeta('battery', 'البطارية والأداء', Icons.bolt_rounded, _emerald),
-        _HubCategoryMeta('developer', 'خيارات المطور والنظام', Icons.terminal_rounded, _violet),
-        _HubCategoryMeta('regional', 'الوقت والتاريخ واللغة', Icons.schedule_rounded, _cyan),
-        _HubCategoryMeta('apps', 'التطبيقات والأذونات', Icons.admin_panel_settings_rounded, _amber),
-        _HubCategoryMeta('accessibility', 'التسهيلات والتخزين', Icons.accessibility_new_rounded, _blue),
+  List<_HubGroupMeta> get _groups => const [
+        _HubGroupMeta(
+          id: 'direct_controls',
+          numberTag: '01',
+          title: 'Direct In-App Controls',
+          badgeSuffix: 'CONTROLS',
+          icon: Icons.flash_on_rounded,
+          color: _cyan,
+        ),
+        _HubGroupMeta(
+          id: 'security',
+          numberTag: '02',
+          title: 'Security, Passwords & Biometrics',
+          badgeSuffix: 'SETTINGS',
+          icon: Icons.security_rounded,
+          color: _coral,
+        ),
+        _HubGroupMeta(
+          id: 'audio',
+          numberTag: '03',
+          title: 'Audio, Ringer & Notifications',
+          badgeSuffix: 'SETTINGS',
+          icon: Icons.volume_up_rounded,
+          color: _emerald,
+        ),
+        _HubGroupMeta(
+          id: 'display',
+          numberTag: '04',
+          title: 'Display, Wallpaper & Eye Comfort',
+          badgeSuffix: 'SETTINGS',
+          icon: Icons.wb_sunny_rounded,
+          color: _amber,
+        ),
+        _HubGroupMeta(
+          id: 'network',
+          numberTag: '05',
+          title: 'Network, Wi-Fi, Hotspot & NFC',
+          badgeSuffix: 'SETTINGS',
+          icon: Icons.wifi_rounded,
+          color: _blue,
+        ),
+        _HubGroupMeta(
+          id: 'battery',
+          numberTag: '06',
+          title: 'Battery Saver & Honor App Launch',
+          badgeSuffix: 'SETTINGS',
+          icon: Icons.bolt_rounded,
+          color: _emerald,
+        ),
+        _HubGroupMeta(
+          id: 'developer',
+          numberTag: '07',
+          title: 'Developer Options & USB Debugging',
+          badgeSuffix: 'SETTINGS',
+          icon: Icons.terminal_rounded,
+          color: _violet,
+        ),
+        _HubGroupMeta(
+          id: 'regional',
+          numberTag: '08',
+          title: 'Date, Time, Language & Keyboard',
+          badgeSuffix: 'SETTINGS',
+          icon: Icons.schedule_rounded,
+          color: _cyan,
+        ),
+        _HubGroupMeta(
+          id: 'apps',
+          numberTag: '09',
+          title: 'Installed Apps, Cache & Default Apps',
+          badgeSuffix: 'SETTINGS',
+          icon: Icons.admin_panel_settings_rounded,
+          color: _amber,
+        ),
+        _HubGroupMeta(
+          id: 'accessibility',
+          numberTag: '10',
+          title: 'Accessibility & System Storage',
+          badgeSuffix: 'SETTINGS',
+          icon: Icons.accessibility_new_rounded,
+          color: _blue,
+        ),
       ];
 
   List<_SystemControlItem> _buildAllControlItems() {
     final timeoutLabel = _screenTimeoutSec >= 60
-        ? '${_screenTimeoutSec ~/ 60} دقيقة'
-        : '$_screenTimeoutSec ثانية';
+        ? '${_screenTimeoutSec ~/ 60}m'
+        : '${_screenTimeoutSec}s';
     final ringerLabel = _ringerMode == 'silent'
-        ? 'صامت (Silent)'
-        : (_ringerMode == 'vibrate' ? 'اهتزاز (Vibrate)' : 'عام (Normal)');
+        ? 'Silent'
+        : (_ringerMode == 'vibrate' ? 'Vibrate' : 'Normal');
 
     return [
-      // ==================== 1. AUDIO & SOUND ====================
+      // ==================== 02. SECURITY & PASSWORDS ====================
+      _SystemControlItem(
+        id: 'screen_lock',
+        category: 'security',
+        title: 'Screen Lock Password, PIN & Pattern',
+        categoryTag: 'Device Lock',
+        subtitle:
+            'Set or update your device passcode, 6-digit PIN, or pattern lock.',
+        icon: Icons.lock_rounded,
+        color: _isDeviceSecure ? _emerald : _coral,
+        statusLabel: _isDeviceSecure ? 'SECURED' : 'UNSECURED',
+        isStatusHealthy: _isDeviceSecure,
+        supportsDirectAction: false,
+        targetKey: 'screen_lock',
+        recommendation:
+            'Use a 6-digit PIN or alphanumeric password; an active screen lock enables hardware file encryption.',
+        steps: const [
+          'Tap "Open Setting Screen" below to jump directly to the Screen Lock setup screen.',
+          'Enter your current PIN/Pattern (if set), then select PIN, Password, or Pattern.',
+          'Enter your new passcode twice to confirm and tap "Done".',
+        ],
+      ),
+      _SystemControlItem(
+        id: 'biometrics_fingerprint',
+        category: 'security',
+        title: 'Fingerprint & Face Unlock Biometrics',
+        categoryTag: 'Biometric Auth',
+        subtitle:
+            'Enroll fingerprints or face recognition for fast unlocking and banking apps.',
+        icon: Icons.fingerprint_rounded,
+        color: _cyan,
+        statusLabel: _isDeviceSecure ? 'Ready' : 'Needs PIN',
+        isStatusHealthy: _isDeviceSecure,
+        supportsDirectAction: false,
+        targetKey: 'biometric_enroll',
+        recommendation:
+            'Register both thumbs and index fingers for effortless unlocking in any hand position.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Biometrics & Fingerprint enrollment.',
+          'Select "Fingerprint Management" and verify your screen lock PIN.',
+          'Tap "New Fingerprint" and place your finger on the sensor repeatedly until 100% scanned.',
+        ],
+      ),
+      _SystemControlItem(
+        id: 'privacy_location',
+        category: 'security',
+        title: 'Privacy Dashboard & GPS Location',
+        categoryTag: 'Location & Sensors',
+        subtitle:
+            'Audit apps accessing GPS location, camera, and microphone in the background.',
+        icon: Icons.location_on_rounded,
+        color: _amber,
+        statusLabel: 'Active',
+        isStatusHealthy: true,
+        supportsDirectAction: false,
+        targetKey: 'location_settings',
+        recommendation:
+            'Set location permission to "Allow only while using the app" to block background tracking.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Location Services.',
+          'Review the "Recent location requests" list.',
+          'Tap any unfamiliar app -> "Permissions" -> "Location" -> select "While using the app" or "Don\'t allow".',
+        ],
+      ),
+      _SystemControlItem(
+        id: 'security_center',
+        category: 'security',
+        title: 'System Security, Play Protect & Find Device',
+        categoryTag: 'OS Integrity',
+        subtitle:
+            'Verify Google Play Protect malware scan, SIM PIN lock, and remote Find My Device.',
+        icon: Icons.shield_rounded,
+        color: _emerald,
+        statusLabel: 'Protected',
+        isStatusHealthy: true,
+        supportsDirectAction: false,
+        targetKey: 'security_settings',
+        recommendation:
+            'Ensure "Find My Device" is ON so you can locate, lock, or wipe your phone remotely if lost.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open the Android Security Center.',
+          'Tap "Google Play Protect" and verify app scanning is active.',
+          'Tap "Find My Device" and confirm remote location tracking is enabled.',
+        ],
+      ),
+
+      // ==================== 03. AUDIO & SOUND ====================
       _SystemControlItem(
         id: 'ringer_volume',
         category: 'audio',
-        titleAr: 'وضع الرنين ومستوى الصوت المباشر',
-        titleEn: 'Ringer Mode & Volume Control',
-        subtitleAr: 'تبديل فوري بين (عام / اهتزاز / صامت) وضبط مستوى الصوت بضغطة زر',
+        title: 'Ringer Mode, Ringtones & Volume',
+        categoryTag: 'Audio & Haptics',
+        subtitle:
+            'Switch between Normal, Vibrate, and Silent modes or customize phone ringtones.',
         icon: Icons.notifications_active_rounded,
         color: _emerald,
         statusLabel: '$ringerLabel • $_mediaVolumePct%',
         isStatusHealthy: true,
         supportsDirectAction: true,
         targetKey: 'sound_settings',
-        recommendationAr:
-            'تفعيل وضع الاهتزاز أثناء الاجتماعات وتحديد مستوى الوسائط عند 50%-75% لحماية السمع والبطارية.',
-        stepsAr: const [
-          'يمكنك التبديل فوراً من الأزرار المباشرة بالأسفل داخل التطبيق دون الخروج.',
-          'لتخصيص نغمة الرنين أو نغمة الرسائل، اضغط زر "فتح إعدادات الصوت".',
-          'اختر "نغمة رنين الهاتف (SIM 1 / SIM 2)" وحدد النغمة المفضلة لديك.',
+        recommendation:
+            'Use Vibrate mode during meetings and keep media volume between 50%-75% to protect hearing and save battery.',
+        steps: const [
+          'Use the 1-click buttons right inside this sub-rectangle to switch Ringer Mode or Volume immediately.',
+          'To customize ringtones or notification sounds, tap "Open Setting Screen" below.',
+          'Select "Phone Ringtone (SIM 1 / SIM 2)" and pick your preferred tone.',
         ],
       ),
       _SystemControlItem(
         id: 'dnd_mode',
         category: 'audio',
-        titleAr: 'عدم الإزعاج وتصفية المقاطعات',
-        titleEn: 'Do Not Disturb (DND) & Priority',
-        subtitleAr: 'كتم الإشعارات المزعجة وقت النوم مع السماح للمكالمات الهامة فقط',
+        title: 'Do Not Disturb (DND) & Sleep Schedule',
+        categoryTag: 'Focus & Sleep',
+        subtitle:
+            'Silence unwanted interruptions at night while allowing calls from starred contacts.',
         icon: Icons.do_not_disturb_on_rounded,
         color: _violet,
-        statusLabel: _dndPolicyGranted ? 'مصرح لـ SysPulse' : 'يتطلب إذن أولوية',
-        isStatusHealthy: _dndPolicyGranted,
+        statusLabel: _dndPolicyGranted ? 'Granted' : 'Standard',
+        isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'dnd_settings',
-        recommendationAr:
-            'اضبط جدولاً تلقائياً لعدم الإزعاج من 11 مساءً حتى 6 صباحاً مع استثناء جهات الاتصال المفضلة.',
-        stepsAr: const [
-          'اضغط زر "فتح الإعدادات" للانتقال مباشرة إلى شاشة عدم الإزعاج.',
-          'اضغط على "جدولة زمنية (Schedule)" لتحديد وقت النوم التلقائي.',
-          'ادخل إلى "المكالمات والرسائل المسموح بها" واختر "المفضلة أو جهات الاتصال فقط".',
+        recommendation:
+            'Schedule automatic Do Not Disturb from 11:00 PM to 6:00 AM and allow Favorite Contacts only.',
+        steps: const [
+          'Tap "Open Setting Screen" below to jump directly to Do Not Disturb configuration.',
+          'Tap "Schedules" and enable a Sleeping schedule (e.g., 23:00 to 06:00).',
+          'Tap "Calls & Messages" and choose "Favorite contacts only".',
         ],
       ),
       _SystemControlItem(
         id: 'app_notifications',
         category: 'audio',
-        titleAr: 'إدارة إشعارات التطبيقات والبانرات',
-        titleEn: 'App Notifications & Status Bar',
-        subtitleAr: 'إيقاف الإشعارات الإعلانية المزعجة للتطبيقات غير الضرورية',
+        title: 'App Notifications & Status Bar Banners',
+        categoryTag: 'Notification Control',
+        subtitle:
+            'Block spammy promotional notifications from games and shopping apps.',
         icon: Icons.mark_chat_unread_rounded,
         color: _cyan,
-        statusLabel: 'إدارة شاملة',
+        statusLabel: 'Manager',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'notification_settings',
-        recommendationAr:
-            'إيقاف إشعارات الألعاب وتطبيقات التسوق يقلل من إيقاظ الشاشة ويوفر حتى 8% من البطارية يومياً.',
-        stepsAr: const [
-          'اضغط زر "فتح الإعدادات" لعرض قائمة إشعارات جميع التطبيقات.',
-          'رتّب القائمة حسب "الأحدث إرسالاً (Most Recent)" لمعرفة التطبيقات المزعجة.',
-          'أغلق المفتاح المقابل لأي تطبيق لا تحتاج لتنبيهاته.',
+        recommendation:
+            'Muting non-essential app notifications prevents screen wake-ups and saves up to 8% battery daily.',
+        steps: const [
+          'Tap "Open Setting Screen" below to view all apps notification permissions.',
+          'Sort the list by "Most Recent" or "Most Frequent" to spot noisy apps.',
+          'Toggle off the switch next to any app you do not need alerts from.',
         ],
       ),
 
-      // ==================== 2. DISPLAY & WALLPAPER ====================
+      // ==================== 04. DISPLAY & WALLPAPER ====================
       _SystemControlItem(
         id: 'brightness_timeout',
         category: 'display',
-        titleAr: 'سطوع الشاشة ومهلة الإغلاق التلقائي',
-        titleEn: 'Screen Brightness & Auto-Lock Timeout',
-        subtitleAr: 'ضبط مباشر لنسبة الإضاءة التلقائية وزمن إغلاق الشاشة لتوفير الطاقة',
+        title: 'Screen Brightness & Auto-Lock Timeout',
+        categoryTag: 'Display & Power',
+        subtitle:
+            'Directly adjust screen brightness level and sleep timeout to prevent battery drain.',
         icon: Icons.wb_sunny_rounded,
         color: _amber,
         statusLabel:
-            '${_autoBrightness ? "تلقائي" : "$_brightnessPct%"} • مهلة $timeoutLabel',
+            '${_autoBrightness ? "Auto" : "$_brightnessPct%"} • $timeoutLabel',
         isStatusHealthy: _screenTimeoutSec <= 120,
         supportsDirectAction: true,
         targetKey: 'display_settings',
-        recommendationAr:
-            'السطوع التلقائي ومهلة إغلاق الشاشة عند (30 ثانية أو 1 دقيقة) يحفظان الشاشة من التطبيع ويوفران 20% من البطارية.',
-        stepsAr: const [
-          'استخدم أزرار الضبط السريع بالأسفل لتحديد السطوع (25% - 100%) أو المهلة (30ث - 5د) فوراً.',
-          'إذا طُلب منك إذن "تعديل إعدادات النظام" لأول مرة، فعّل المفتاح أمام SysPulse ثم ارجع.',
-          'أو اضغط "فتح إعدادات الشاشة" لضبط حجم الخط ومعدل تحديث الشاشة (120Hz / Dynamic).',
+        recommendation:
+            'Adaptive brightness and a 30s–1m screen timeout prevent OLED burn-in and save up to 20% battery.',
+        steps: const [
+          'Use the 1-click preset chips inside this sub-rectangle to set Screen Timeout immediately.',
+          'If prompted on first use, toggle ON "Allow modify system settings" for SysPulse and return.',
+          'Or tap "Open Setting Screen" to adjust Font Size and Screen Refresh Rate (120Hz / Dynamic).',
         ],
       ),
       _SystemControlItem(
-        id: 'wallpaper_style',
+        id: 'wallpaper',
         category: 'display',
-        titleAr: 'ضبط خلفية الشاشة والسمات',
-        titleEn: 'Wallpaper, Lock Screen & Themes',
-        subtitleAr: 'تغيير خلفية الشاشة الرئيسية وشاشة القفل بضغطة واحدة',
+        title: 'Wallpaper, Lock Screen & Themes',
+        categoryTag: 'Personalization',
+        subtitle:
+            'Change your Home screen and Lock screen wallpaper in one tap.',
         icon: Icons.wallpaper_rounded,
         color: _violet,
-        statusLabel: 'تخصيص المظهر',
+        statusLabel: 'Personalize',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'wallpaper_settings',
-        recommendationAr:
-            'استخدام الخلفيات الداكنة (Dark Wallpapers) على شاشات OLED يطفئ البكسلات السوداء ويوفر الطاقة.',
-        stepsAr: const [
-          'اضغط زر "تغيير خلفية الشاشة" بالأسفل لفتح منتقي الخلفيات والمعرض مباشرة.',
-          'اختر الصورة أو الخلفية الداكنة التي ترغب بها من المعرض أو خلفيات النظام.',
-          'اضغط "تعيين كخلفية (Set Wallpaper)" وحدد (الشاشة الرئيسية أو شاشة القفل أو كليهما).',
+        recommendation:
+            'Using dark AMOLED wallpapers turns off black pixels completely and reduces display power usage.',
+        steps: const [
+          'Tap "Open Setting Screen" below to launch the system Wallpaper chooser.',
+          'Pick an image from your Gallery or System Wallpapers.',
+          'Tap "Apply / Set Wallpaper" and choose Home Screen, Lock Screen, or Both.',
         ],
       ),
       _SystemControlItem(
         id: 'eye_comfort_night',
         category: 'display',
-        titleAr: 'حماية العين والوضع الليلي الدافئ',
-        titleEn: 'Eye Comfort Shield & Dark Mode',
-        subtitleAr: 'تصفية الأشعة الزرقاء المجهدة للعين ليلاً وتفعيل المظهر الداكن',
+        title: 'Eye Comfort Shield & Dark Mode',
+        categoryTag: 'Visual Health',
+        subtitle:
+            'Filter blue light at night to reduce eye strain and configure system Dark Mode.',
         icon: Icons.nightlight_round,
         color: _blue,
-        statusLabel: 'حماية البصر',
+        statusLabel: 'Eye Shield',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'night_display_settings',
-        recommendationAr:
-            'تفعيل وضع راحة العين بعد الغروب يساعد على النوم الصحي ويقلل إجهاد الشبكية.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات راحة العين" بالأسفل.',
-          'فعّل خيار "حماية العين / Eye Comfort" أو "الجدولة من الغروب للشروق".',
-          'اضبط شريط حرارة اللون نحو اللون الدافئ المريح لعينيك.',
+        recommendation:
+            'Schedule Eye Comfort from Sunset to Sunrise to protect melatonin and improve sleep quality.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Eye Comfort / Night Display settings.',
+          'Enable "Eye Comfort / Blue Light Filter" or set schedule to "Sunset to Sunrise".',
+          'Adjust the color temperature slider toward Warm for comfortable night reading.',
         ],
       ),
       _SystemControlItem(
         id: 'torch_flashlight',
         category: 'display',
-        titleAr: 'كشاف الإضاءة الخلفي الفوري',
-        titleEn: 'Instant Hardware Flashlight (Torch)',
-        subtitleAr: 'تشغيل وإيقاف فلاش الكاميرا الخلفي مباشرة بضغطة زر',
+        title: 'Instant Hardware Flashlight (Torch)',
+        categoryTag: 'Hardware Utility',
+        subtitle:
+            'Toggle the rear camera LED flashlight directly without opening the Camera app.',
         icon: Icons.flashlight_on_rounded,
         color: _isTorchOn ? _amber : _cyan,
-        statusLabel: _isTorchOn ? 'يعمل الآن (ON) 🔦' : 'مغلق (OFF)',
+        statusLabel: _isTorchOn ? 'ON' : 'OFF',
         isStatusHealthy: true,
         supportsDirectAction: true,
         targetKey: 'display_settings',
-        recommendationAr:
-            'يعمل الكشاف مباشرة عبر دائرة الفلاش دون فتح الكاميرا لتوفير الطاقة.',
-        stepsAr: const [
-          'اضغط زر "تشغيل / إيقاف الكشاف" بالأسفل للتحكم الفوري بالإضاءة.',
+        recommendation:
+            'Direct hardware torch control uses minimal power by bypassing the camera sensor pipeline.',
+        steps: const [
+          'Tap the "Toggle Flashlight" button inside this sub-rectangle or in Group 01 for instant lighting.',
         ],
       ),
 
-      // ==================== 3. SECURITY & PASSWORDS ====================
-      _SystemControlItem(
-        id: 'screen_lock',
-        category: 'security',
-        titleAr: 'ضبط كلمة المرور وقفل الشاشة',
-        titleEn: 'Screen Lock Password, PIN & Pattern',
-        subtitleAr: 'تعيين أو تغيير الرقم السري أو النمط لحماية الهاتف من المتطفلين',
-        icon: Icons.lock_rounded,
-        color: _isDeviceSecure ? _emerald : _coral,
-        statusLabel: _isDeviceSecure ? 'محمي بقفل نشط 🔒' : 'غير محمي ⚠️',
-        isStatusHealthy: _isDeviceSecure,
-        supportsDirectAction: false,
-        targetKey: 'screen_lock',
-        recommendationAr:
-            'استخدم رمز PIN من 6 أرقام أو كلمة مرور قوية؛ فقفل الشاشة يفعل تشفير بيانات الهاتف تلقائياً.',
-        stepsAr: const [
-          'اضغط زر "ضبط كلمة المرور وقفل الشاشة" بالأسفل للانتقال مباشرة لشاشة التعيين.',
-          'أدخل رمز القفل الحالي (إن وجد)، ثم اختر نوع القفل (رقم سري PIN، نمط Pattern، أو كلمة مرور).',
-          'أدخل الرمز الجديد مرتين للتأكيد واضغط "تم (Done)".',
-        ],
-      ),
-      _SystemControlItem(
-        id: 'biometrics_fingerprint',
-        category: 'security',
-        titleAr: 'بصمة الإصبع والتعرف على الوجه',
-        titleEn: 'Fingerprint & Face Unlock Biometrics',
-        subtitleAr: 'إضافة بصمات الأصابع أو بصمة الوجه لفتح الهاتف والتطبيقات البنكية بسرعة',
-        icon: Icons.fingerprint_rounded,
-        color: _cyan,
-        statusLabel: _isDeviceSecure ? 'البصمة متاحة' : 'يتطلب قفل شاشة أولاً',
-        isStatusHealthy: _isDeviceSecure,
-        supportsDirectAction: false,
-        targetKey: 'biometric_enroll',
-        recommendationAr:
-            'سجّل بصمة الإبهام والسبابة لكلتا اليدين لتسهيل فتح الهاتف في جميع الأوضاع.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات البصمة والوجه" بالأسفل.',
-          'اختر "إدارة بصمات الأصابع (Fingerprint Management)" وأدخل رمز القفل.',
-          'اضغط "بصمة جديدة" وضع إصبعك على المستشعر عدة مرات من زوايا مختلفة حتى يكتمل التسجيل.',
-        ],
-      ),
-      _SystemControlItem(
-        id: 'privacy_location',
-        category: 'security',
-        titleAr: 'الخصوصية وخدمات الموقع الجغرافي (GPS)',
-        titleEn: 'Privacy Dashboard & Location Services',
-        subtitleAr: 'مراجعة التطبيقات التي تصل للموقع والكاميرا والمايكروفون',
-        icon: Icons.location_on_rounded,
-        color: _amber,
-        statusLabel: 'تحكم الخصوصية',
-        isStatusHealthy: true,
-        supportsDirectAction: false,
-        targetKey: 'location_settings',
-        recommendationAr:
-            'اضبط صلاحية الموقع للتطبيقات على "أثناء استخدام التطبيق فقط" لمنع التتبع في الخلفية.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات الموقع والخصوصية" بالأسفل.',
-          'راجع قائمة "التطبيقات التي طلبت الموقع مؤخراً".',
-          'اضغط على أي تطبيق غير ضروري واختر "السماح أثناء الاستخدام فقط" أو "عدم السماح".',
-        ],
-      ),
-      _SystemControlItem(
-        id: 'security_center',
-        category: 'security',
-        titleAr: 'مركز الأمان وتحديثات الحماية والـ SIM',
-        titleEn: 'System Security, Find My Device & SIM Lock',
-        subtitleAr: 'فحص Google Play Protect، قفل شريحة SIM، والعثور على الهاتف المفقود',
-        icon: Icons.shield_rounded,
-        color: _emerald,
-        statusLabel: 'فحص شامل',
-        isStatusHealthy: true,
-        supportsDirectAction: false,
-        targetKey: 'security_settings',
-        recommendationAr:
-            'تأكد من تفعيل ميزة "العثور على جهازي (Find My Device)" لتتمكن من تحديد موقع الهاتف أو مسحه عن بُعد في حال فقدانه.',
-        stepsAr: const [
-          'اضغط زر "فتح مركز الأمان" بالأسفل.',
-          'تحقق من أن "الحماية Play Protect" مفعلة ولا توجد تطبيقات ضارة.',
-          'ادخل إلى "العثور على جهازي" وتأكد من أنها في وضع التشغيل (On).',
-        ],
-      ),
-
-      // ==================== 4. CONNECTIVITY & NETWORK ====================
+      // ==================== 05. CONNECTIVITY & NETWORK ====================
       _SystemControlItem(
         id: 'wifi_networks',
         category: 'network',
-        titleAr: 'شبكات الواي فاي ومشاركة كلمة المرور (QR)',
-        titleEn: 'Wi-Fi Networks & QR Share',
-        subtitleAr: 'الاتصال بالشبكات اللاسلكية، عرض باركود الشبكة، وضبط IP الثابت',
+        title: 'Wi-Fi Networks & QR Password Share',
+        categoryTag: 'Wireless LAN',
+        subtitle:
+            'Connect to Wi-Fi networks, share Wi-Fi via QR code, or configure static IP/DNS.',
         icon: Icons.wifi_rounded,
         color: _wifiEnabled ? _emerald : _textSecondary,
-        statusLabel: _wifiEnabled ? 'الواي فاي متصل / مفعل' : 'الواي فاي مغلق',
+        statusLabel: _wifiEnabled ? 'Wi-Fi ON' : 'Wi-Fi OFF',
         isStatusHealthy: _wifiEnabled,
         supportsDirectAction: false,
         targetKey: 'wifi_settings',
-        recommendationAr:
-            'أوقف خيار "البحث التلقائي عن الشبكات المفتوحة" لحماية هاتفك من نقاط الاتصال الوهمية.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات الواي فاي" بالأسفل.',
-          'لمشاركة الشبكة الحالية، اضغط على اسم الشبكة المتصلة سيظهر لك رمز QR جاهز للمسح.',
-          'لحذف شبكة قديمة، اضغط مطولاً عليها واختر "نسيان الشبكة (Forget)".',
+        recommendation:
+            'Disable "Notify for public networks" to prevent auto-connecting to insecure open Wi-Fi hotspots.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Wi-Fi networks.',
+          'To share your current Wi-Fi password, tap the connected network name to display its QR code.',
+          'To remove an old network, long-press its name and select "Forget network".',
         ],
       ),
       _SystemControlItem(
         id: 'bluetooth_devices',
         category: 'network',
-        titleAr: 'البلوتوث والأجهزة المقترنة والسماعات',
-        titleEn: 'Bluetooth Audio, Watch & Paired Devices',
-        subtitleAr: 'ربط الساعات الذكية، السماعات اللاسلكية، وبلوتوث السيارة',
+        title: 'Bluetooth Audio, Watch & Paired Devices',
+        categoryTag: 'Short-Range Radio',
+        subtitle:
+            'Pair wireless earbuds, smartwatches, and car audio systems.',
         icon: Icons.bluetooth_rounded,
         color: _bluetoothEnabled ? _blue : _textSecondary,
-        statusLabel: _bluetoothEnabled ? 'البلوتوث نشط 🔵' : 'البلوتوث مغلق',
+        statusLabel: _bluetoothEnabled ? 'Active' : 'OFF',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'bluetooth_settings',
-        recommendationAr:
-            'أغلق البلوتوث عند عدم استخدام السماعات أو الساعة لتوفير الطاقة وتعزيز الأمان.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات البلوتوث" بالأسفل.',
-          'فعّل مفتاح البلوتوث وانتظر ظهور اسم السماعة أو الجهاز في قائمة "الأجهزة المتاحة".',
-          'اضغط على اسم الجهاز ثم وافق على طلب الاقتران (Pair).',
+        recommendation:
+            'Turn off Bluetooth when not using wireless accessories to save battery and prevent BlueBorne probes.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Bluetooth settings.',
+          'Toggle Bluetooth ON and wait for your accessory to appear under "Available devices".',
+          'Tap the device name and confirm the "Pair" prompt.',
         ],
       ),
       _SystemControlItem(
         id: 'hotspot_tethering',
         category: 'network',
-        titleAr: 'نقطة الاتصال الشخصية وبث الإنترنت (Hotspot)',
-        titleEn: 'Personal Wi-Fi Hotspot & Tethering',
-        subtitleAr: 'تحويل الهاتف إلى راوتر واي فاي وضبط كلمة مرور نقطة الاتصال',
+        title: 'Personal Wi-Fi Hotspot & Tethering',
+        categoryTag: 'Internet Sharing',
+        subtitle:
+            'Share your mobile data connection with laptops or other phones and set hotspot password.',
         icon: Icons.wifi_tethering_rounded,
         color: _cyan,
-        statusLabel: 'مشاركة الإنترنت',
+        statusLabel: 'Hotspot',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'hotspot_settings',
-        recommendationAr:
-            'حدد "حد البيانات لمرة واحدة" (مثلاً 500MB) وإغلاق نقطة الاتصال تلقائياً عند عدم اتصال أي جهاز.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات نقطة الاتصال" بالأسفل.',
-          'ادخل إلى "نقطة اتصال Wi-Fi الشخصية (Personal Hotspot)".',
-          'اضغط على "تهيئة نقطة الاتصال" لتغيير اسم الشبكة وكلمة المرور إلى رمز قوي.',
+        recommendation:
+            'Set a "One-time data limit" (e.g., 500 MB) and enable "Turn off hotspot automatically" when idle.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Tethering & Personal Hotspot.',
+          'Tap "Personal Hotspot" and select "Configure Hotspot" to set a strong WPA2/WPA3 password.',
+          'Toggle the Hotspot switch ON when you need to share internet.',
         ],
       ),
       _SystemControlItem(
         id: 'sim_mobile_data',
         category: 'network',
-        titleAr: 'إدارة شرائح SIM وبيانات الهاتف والتجوال',
-        titleEn: 'SIM Cards, 5G/4G Preferred Network & Roaming',
-        subtitleAr: 'تحديد الشريحة المخصصة للإنترنت والمكالمات وتفعيل 5G أو VoLTE',
+        title: 'SIM Cards, 5G/4G Network & Data Roaming',
+        categoryTag: 'Cellular Radio',
+        subtitle:
+            'Choose default SIM for calls/data, toggle 5G/LTE mode, and enable Wi-Fi Calling.',
         icon: Icons.sim_card_rounded,
         color: _violet,
-        statusLabel: 'إعدادات الشريحة',
+        statusLabel: 'SIM Config',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'data_roaming_sim',
-        recommendationAr:
-            'إذا كانت إشارة 5G ضعيفة في منطقتك وتستنزف البطارية، اضبط نمط الشبكة المفضل على 4G/LTE تلقائي.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات الشريحة والبيانات" بالأسفل.',
-          'حدد الشريحة الافتراضية لبيانات الجوال (Mobile Data) وشريحة المكالمات.',
-          'يمكنك من نفس الشاشة تفعيل مكالمات الواي فاي (Wi-Fi Calling) وتحديد نمط الشبكة.',
+        recommendation:
+            'If 5G signal is weak in your area and drains battery, switch Preferred Network Mode to 4G/LTE Auto.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open SIM & Mobile Network settings.',
+          'Select your preferred SIM card for Mobile Data and Default Calling.',
+          'Tap "Preferred network type" or "Wi-Fi Calling" to optimize voice and data reception.',
         ],
       ),
       _SystemControlItem(
         id: 'nfc_vpn_dns',
         category: 'network',
-        titleAr: 'الدفع اللاسلكي (NFC) والـ VPN والـ DNS الخاص',
-        titleEn: 'NFC Contactless Pay, VPN & Private DNS',
-        subtitleAr: 'تشغيل الدفع عبر الهاتف (مدى / Google Pay) وإعداد مانع الإعلانات DNS',
+        title: 'NFC Contactless Pay, VPN & Private DNS',
+        categoryTag: 'Payment & DNS',
+        subtitle:
+            'Enable NFC tap-to-pay (Google Pay / Bank cards) and configure Private Ad-Blocker DNS.',
         icon: Icons.contactless_rounded,
         color: _nfcEnabled ? _emerald : _amber,
-        statusLabel: _nfcEnabled ? 'NFC مفعل للدفع 💳' : 'NFC مغلق',
+        statusLabel: _nfcEnabled ? 'NFC ON' : 'NFC OFF',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'nfc_settings',
-        recommendationAr:
-            'لتفعيل حجب الإعلانات والمواقع الضارة مجاناً في كل الهاتف، اضبط "DNS الخاص" على dns.adguard-dns.com.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات NFC والاتصالات" بالأسفل.',
-          'فعّل مفتاح NFC لاستخدام تطبيقات الدفع البنكي عبر تقريب الهاتف.',
-          'للـ DNS الخاص: ادخل "المزيد من الاتصالات" ➔ "DNS الخاص (Private DNS)".',
+        recommendation:
+            'To block ads and malware system-wide for free, set Private DNS to: dns.adguard-dns.com.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open NFC & More Connections.',
+          'Toggle NFC ON to pay at contactless terminals with your phone.',
+          'For Private DNS: go to "More connections" -> "Private DNS" -> enter dns.adguard-dns.com.',
         ],
       ),
 
-      // ==================== 5. BATTERY & PERFORMANCE ====================
+      // ==================== 06. BATTERY & PERFORMANCE ====================
       _SystemControlItem(
         id: 'honor_launch',
         category: 'battery',
-        titleAr: 'إدارة بدء تشغيل التطبيقات (Honor App Launch) والذاكرة',
-        titleEn: 'Honor Startup Manager & RAM Boost',
-        subtitleAr: 'منع التطبيقات العنيدة من إعادة تشغيل نفسها في الخلفية بعد مسحها',
+        title: 'Honor App Launch & Background Freeze',
+        categoryTag: 'OEM Power Control',
+        subtitle:
+            'Prevent stubborn apps from auto-restarting in the background after clearing Recent Apps.',
         icon: Icons.rocket_launch_rounded,
         color: _coral,
-        statusLabel: 'تحكم مباشر + إعدادات',
+        statusLabel: 'OEM Rules',
         isStatusHealthy: true,
         supportsDirectAction: true,
         targetKey: 'honor_app_launch',
-        recommendationAr:
-            'في هواتف Honor، إيقاف "الإدارة التلقائية" للتطبيقات غير الهامة يمنع استنزاف البطارية أثناء الليل نهائياً.',
-        stepsAr: const [
-          'اضغط زر "تنظيف الذاكرة الفوري" بالأسفل لتفريغ الـ Cache الآن.',
-          'ثم اضغط "فتح إدارة تشغيل التطبيقات (App Launch)" للانتقال لإعدادات هونر.',
-          'أغلق المفتاح التلقائي أمام التطبيقات المستنزفة، وأوقف خيار "التشغيل في الخلفية (Run in background)".',
+        recommendation:
+            'On Honor / MagicOS, disabling "Manage Automatically" for heavy social apps stops overnight battery drain.',
+        steps: const [
+          'Tap "Clean System Memory Now" inside this sub-rectangle to flush cached background processes immediately.',
+          'Then tap "Open Setting Screen" below to launch Honor App Launch / Battery Optimization.',
+          'Turn OFF "Manage Automatically" for draining apps, and uncheck "Auto-launch" and "Run in background".',
         ],
       ),
       _SystemControlItem(
         id: 'battery_saver_health',
         category: 'battery',
-        titleAr: 'وضع توفير الطاقة وصحة البطارية والشحن الذكي',
-        titleEn: 'Battery Saver, Smart Charge & Thermal Mode',
-        subtitleAr: 'تفعيل وضع توفير البطارية والشحن الذكي لحماية عمر البطارية',
+        title: 'Battery Saver, Smart Charge & Capacity',
+        categoryTag: 'Battery Longevity',
+        subtitle:
+            'Enable Power Saving mode and Smart Battery Capacity to extend battery lifespan.',
         icon: Icons.battery_charging_full_rounded,
         color: _batterySaverOn ? _amber : _emerald,
-        statusLabel: _batterySaverOn ? 'توفير الطاقة مفعل 🔋' : 'الأداء المتوازن',
+        statusLabel: _batterySaverOn ? 'Saver ON' : 'Balanced',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'battery_saver',
-        recommendationAr:
-            'فعّل خيار "الشحن الذكي (Smart Charge)" و"سعة البطارية الذكية" في إعدادات البطارية لإطالة عمر البطارية لسنوات.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات البطارية" بالأسفل.',
-          'فعّل "وضع توفير الطاقة (Power Saving Mode)" عند انخفاض الشحن عن 30%.',
-          'ادخل إلى "المزيد من إعدادات البطارية" وفعّل "الشحن الذكي".',
+        recommendation:
+            'Enable "Smart Charge" and "Smart Battery Capacity" to pause trickle charging at 80%-90% overnight.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Battery & Power Saving settings.',
+          'Toggle ON "Power Saving Mode" when battery drops below 30%.',
+          'Tap "More battery settings" and enable "Smart Charge" & "Smart Battery Capacity".',
         ],
       ),
 
-      // ==================== 6. DEVELOPER OPTIONS & SYSTEM ====================
+      // ==================== 07. DEVELOPER OPTIONS & SYSTEM ====================
       _SystemControlItem(
         id: 'dev_options',
         category: 'developer',
-        titleAr: 'خيارات المطور المتقدمة (Developer Options)',
-        titleEn: 'Android Developer Options & USB Debugging',
-        subtitleAr: 'الوصول الفوري لنافذة المبرمجين، تسريع الهاتف، وإغلاق ثغرة تصحيح USB',
+        title: 'Developer Options & USB Debugging',
+        categoryTag: 'Advanced System',
+        subtitle:
+            'Access hidden programmer settings, speed up UI animations, and secure USB Debugging.',
         icon: Icons.developer_mode_rounded,
         color: _adbEnabled ? _coral : _violet,
         statusLabel: !_devOptionsEnabled
-            ? 'مخفية (اضغط لتفعيلها)'
-            : (_adbEnabled ? 'تصحيح USB مفعل ⚠️' : 'مفعلة وآمنة ✅'),
+            ? 'Hidden'
+            : (_adbEnabled ? 'USB Debug ON' : 'Safe'),
         isStatusHealthy: !_adbEnabled,
         supportsDirectAction: false,
-        targetKey: _devOptionsEnabled ? 'developer_options' : 'device_info_build',
-        recommendationAr:
-            _adbEnabled
-                ? '⚠️ تنبيه أمني: خيار "تصحيح أخطاء USB" مفعل حالياً! يُنصح بإيقافه فوراً لحماية بياناتك عند توصيل الهاتف بأي شاحن عام.'
-                : '💡 نصيحة سرعة: داخل خيارات المطور، تغيير "حجم الرسوم المتحركة (Animation Scale)" من 1x إلى 0.5x يجعل الهاتف أسرع بمرتين!',
-        stepsAr: _devOptionsEnabled
+        targetKey:
+            _devOptionsEnabled ? 'developer_options' : 'device_info_build',
+        recommendation: _adbEnabled
+            ? '⚠️ SECURITY ALERT: USB Debugging is currently ON! Turn it OFF when not actively coding to prevent juice-jacking via public chargers.'
+            : '💡 SPEED TIP: Inside Developer Options, set Window, Transition, and Animator scales from 1x to 0.5x to make your phone feel twice as fast!',
+        steps: _devOptionsEnabled
             ? const [
-                'اضغط زر "فتح خيارات المطور مباشرة" بالأسفل.',
-                'للحماية الأمنية: ابحث عن "تصحيح أخطاء USB (USB Debugging)" وتأكد من إغلاقه.',
-                'لتسريع الهاتف: انزل إلى قسم الرسم (Drawing) واجعل مقاييس الرسوم المتحركة الثلاثة على (0.5x).',
+                'Tap "Open Setting Screen" below to jump straight into Developer Options.',
+                'For Security: scroll to "USB Debugging" and toggle it OFF if you are not connected to a PC.',
+                'For Speed: scroll to the "Drawing" section and set all 3 Animation Scale options to "0.5x".',
               ]
             : const [
-                'خيارات المطور مخفية حالياً في هاتفك؛ لتفعيلها اضغط الزر بالأسفل لفتح شاشة "حول الهاتف (About Phone)".',
-                'ابحث عن سطر "رقم البناء (Build Number)" واضغط عليه 7 ضغطات متتالية سريعة.',
-                'أدخل رمز قفل الشاشة، وستظهر لك رسالة "أنت الآن مطور برامج!" ثم ارجع هنا لفتحها مباشرة.',
+                'Developer Options are currently hidden on your phone. Tap "Open Setting Screen" below to open "About Phone".',
+                'Find "Build Number" and tap it rapidly 7 times in a row.',
+                'Enter your lock screen PIN when prompted — you will see "You are now a developer!". Return here to open it directly.',
               ],
       ),
       _SystemControlItem(
         id: 'about_device_update',
         category: 'developer',
-        titleAr: 'معلومات الجهاز الرسمية ورقم الطراز والنظام',
-        titleEn: 'About Phone, Model Specs & Build Info',
-        subtitleAr: 'استعراض مواصفات المعالج، الرام، إصدار MagicOS/Android، والحالة القانونية',
+        title: 'About Phone, Hardware Specs & Build Info',
+        categoryTag: 'Device Identity',
+        subtitle:
+            'Inspect CPU model, RAM capacity, MagicOS / Android version, and security patch level.',
         icon: Icons.phone_android_rounded,
         color: _cyan,
         statusLabel: _androidVersion,
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'device_info_build',
-        recommendationAr:
-            'تحقق دورياً من تحديثات النظام والأمان لضمان الحصول على أحدث ترقيعات الحماية.',
-        stepsAr: const [
-          'اضغط زر "فتح معلومات الهاتف" بالأسفل.',
-          'يمكنك مراجعة اسم الجهاز، سعة الرام، إصدار النواة، ورقم الـ IMEI.',
+        recommendation:
+            'Keep your Android Security Patch level up to date to protect against kernel vulnerabilities.',
+        steps: const [
+          'Tap "Open Setting Screen" below to view full device specifications.',
+          'Review Model Number, RAM, Processor, Android Version, and IMEI details.',
         ],
       ),
 
-      // ==================== 7. DATE, TIME, LANGUAGE & INPUT ====================
+      // ==================== 08. DATE, TIME, LANGUAGE & INPUT ====================
       _SystemControlItem(
         id: 'date_time',
         category: 'regional',
-        titleAr: 'ضبط الوقت والتاريخ والمنطقة الزمنية',
-        titleEn: 'Date, Time & Time Zone Configuration',
-        subtitleAr: 'المزامنة التلقائية للوقت عبر الشبكة وتنسيق الساعة (12/24 ساعة)',
+        title: 'Date, Time & Time Zone Configuration',
+        categoryTag: 'Clock & Sync',
+        subtitle:
+            'Configure automatic network time synchronization and 12-hour / 24-hour clock format.',
         icon: Icons.schedule_rounded,
         color: (_autoTimeEnabled && _autoTimeZoneEnabled) ? _emerald : _amber,
         statusLabel: (_autoTimeEnabled && _autoTimeZoneEnabled)
-            ? 'تلقائي عبر الشبكة ✅'
-            : 'يدوي (قد يعطل الشهادات) ⚠️',
+            ? 'Auto Sync'
+            : 'Manual',
         isStatusHealthy: _autoTimeEnabled && _autoTimeZoneEnabled,
         supportsDirectAction: false,
         targetKey: 'date_time_settings',
-        recommendationAr:
-            'إبقاء الوقت والتاريخ على "الضبط التلقائي" ضروري جداً لعمل تطبيقات البنوك، واتساب، ومتجر التطبيقات بدون أخطاء.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات الوقت والتاريخ" بالأسفل.',
-          'فعّل مفتاح "الضبط التلقائي للوقت والتاريخ (Set Automatically)".',
-          'لتغيير شكل الساعة بين (صباحاً/مساءً) أو (24 ساعة)، بدّل مفتاح "استخدام تنسيق 24 ساعة".',
+        recommendation:
+            'Keep "Set time automatically" ON so banking apps, HTTPS SSL certificates, and WhatsApp never fail.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Date & Time settings.',
+          'Enable "Set time automatically" and "Set time zone automatically".',
+          'Toggle "Use 24-hour format" on or off according to your preference.',
         ],
       ),
       _SystemControlItem(
         id: 'language_region',
         category: 'regional',
-        titleAr: 'لغة الهاتف والمنطقة والأرقام',
-        titleEn: 'System Languages & Regional Format',
-        subtitleAr: 'إضافة اللغات، تبديل لغة الهاتف بين العربية والإنجليزية، وتنسيق الأرقام',
+        title: 'System Language & Regional Format',
+        categoryTag: 'Localization',
+        subtitle:
+            'Add languages, switch system language, and configure region/number formatting.',
         icon: Icons.translate_rounded,
         color: _blue,
-        statusLabel: 'اللغة والمنطقة',
+        statusLabel: 'Languages',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'locale_language',
-        recommendationAr:
-            'يمكنك إضافة العربية والإنجليزية معاً والسحب لترتيب اللغة المفضلة في الأعلى.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات اللغة" بالأسفل.',
-          'اختر "اللغة والمنطقة (Language and Region)" ثم اضغط "إضافة لغة" إن لم تكن موجودة.',
-          'اسحب اللغة التي تريدها إلى المرتبة الأولى (رقم 1) ليتم تطبيقها على النظام فوراً.',
+        recommendation:
+            'You can keep multiple languages in your list and drag your preferred language to position #1 anytime.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open System Language & Region.',
+          'Tap "Add a language" if your target language is not listed.',
+          'Drag your preferred language to the top of the list to apply it immediately.',
         ],
       ),
       _SystemControlItem(
         id: 'keyboard_input',
         category: 'regional',
-        titleAr: 'لوحة المفاتيح والتصحيح التلقائي والكتابة بالصوت',
-        titleEn: 'On-Screen Keyboard, Gboard & Autofill',
-        subtitleAr: 'تخصيص حجم الكيبورد، اللغات المكتوبة، وإيقاف التصحيح الإملائي المزعج',
+        title: 'On-Screen Keyboard, Clipboard & Auto-Correct',
+        categoryTag: 'Text Input',
+        subtitle:
+            'Customize keyboard height, number row, clipboard history, and spell check.',
         icon: Icons.keyboard_alt_rounded,
         color: _violet,
-        statusLabel: 'إعدادات الكيبورد',
+        statusLabel: 'Keyboard',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'keyboard_input',
-        recommendationAr:
-            'تفعيل "حافظة النسخ (Clipboard)" في لوحة المفاتيح يسهّل عليك لصق النصوص المنسوخة سابقاً.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات لوحة المفاتيح" بالأسفل.',
-          'اضغط على لوحة المفاتيح النشطة (مثل Gboard أو Microsoft SwiftKey).',
-          'ادخل إلى "التفضيلات (Preferences)" لإظهار صف الأرقام العلوي أو تعديل ارتفاع اللوحة.',
+        recommendation:
+            'Enable the dedicated "Number Row" and "Clipboard History" in Gboard / SwiftKey preferences for faster typing.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Keyboard & Input Method settings.',
+          'Select your active keyboard (e.g., Gboard or Microsoft SwiftKey).',
+          'Open "Preferences" to enable the top Number Row or adjust vibration on keypress.',
         ],
       ),
 
-      // ==================== 8. APPS & PERMISSIONS ====================
+      // ==================== 09. APPS & PERMISSIONS ====================
       _SystemControlItem(
         id: 'manage_all_apps',
         category: 'apps',
-        titleAr: 'إدارة جميع التطبيقات ومسح التخزين المؤقت',
-        titleEn: 'Installed Apps Manager & Cache Cleaner',
-        subtitleAr: 'عرض جميع تطبيقات الهاتف، مسح الـ Cache، أو إيقافها إجبارياً',
+        title: 'Installed Apps Manager & Cache Cleaner',
+        categoryTag: 'App Management',
+        subtitle:
+            'Browse all installed apps, clear bloated app caches, or Force Stop misbehaving apps.',
         icon: Icons.apps_outage_rounded,
         color: _amber,
-        statusLabel: 'مدير التطبيقات',
+        statusLabel: 'All Apps',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'manage_all_apps',
-        recommendationAr:
-            'إذا واجهت بطئاً أو تعليقاً في تطبيق معين، ادخل إلى التخزين الخاص به وامسح "ذاكرة التخزين المؤقت (Clear Cache)" فقط دون مسح البيانات.',
-        stepsAr: const [
-          'اضغط زر "فتح قائمة التطبيقات" بالأسفل.',
-          'ابحث عن التطبيق المطلوب واضغط عليه.',
-          'اختر "التخزين (Storage)" ثم اضغط "مسح التخزين المؤقت (Clear Cache)" أو "إيقاف إجباري (Force Stop)".',
+        recommendation:
+            'If an app freezes or lags, open its Storage page and tap "Clear Cache" (safe, keeps your login data).',
+        steps: const [
+          'Tap "Open Setting Screen" below to open the full Installed Applications list.',
+          'Search for the target app and tap its name.',
+          'Tap "Storage" -> "Clear Cache" to free space, or tap "Force Stop" to terminate it.',
         ],
       ),
       _SystemControlItem(
         id: 'default_apps',
         category: 'apps',
-        titleAr: 'التطبيقات الافتراضية (المتصفح، الهاتف، الرسائل)',
-        titleEn: 'Default Browser, Dialer & SMS Apps',
-        subtitleAr: 'تحديد المتصفح الافتراضي لفتح الروابط وتطبيق المكالمات والملفات',
+        title: 'Default Browser, Phone Dialer & SMS Apps',
+        categoryTag: 'Default Handlers',
+        subtitle:
+            'Choose which app opens web links, phone calls, SMS messages, and PDFs by default.',
         icon: Icons.verified_user_rounded,
         color: _cyan,
-        statusLabel: 'تعيين الافتراضي',
+        statusLabel: 'Defaults',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'default_apps',
-        recommendationAr:
-            'إذا تغير متصفحك أو تطبيق الاتصال فجأة بعد تثبيت برنامج جديد، يمكنك إعادته لوضعه الأصلي من هنا بثوانٍ.',
-        stepsAr: const [
-          'اضغط زر "فتح التطبيقات الافتراضية" بالأسفل.',
-          'اضغط على الفئة التي تريد تعديلها (مثل: تطبيق المتصفح أو تطبيق الهاتف).',
-          'اختر تطبيقك المفضل (مثل Chrome أو هاتف النظام الأصلي).',
+        recommendation:
+            'If a newly installed app hijacked your browser or dialer, reset your default apps here in seconds.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Default Apps configuration.',
+          'Tap the category you want to change (Browser app, Phone app, SMS app, or Home app).',
+          'Select your preferred trusted application.',
         ],
       ),
       _SystemControlItem(
         id: 'special_overlay_permissions',
         category: 'apps',
-        titleAr: 'أذونات الظهور فوق التطبيقات والنوافذ العائمة',
-        titleEn: 'Display Over Other Apps & Special Access',
-        subtitleAr: 'منع التطبيقات المشبوهة من رسم إعلانات منبثقة فوق الشاشة',
+        title: 'Display Over Other Apps & Floating Popups',
+        categoryTag: 'Special Access',
+        subtitle:
+            'Stop intrusive apps from drawing floating windows or popup ads over your screen.',
         icon: Icons.layers_rounded,
         color: _coral,
-        statusLabel: 'حماية الشاشة',
+        statusLabel: 'Overlay Guard',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'overlay_permission',
-        recommendationAr:
-            'إذا كانت تظهر لك إعلانات مفاجئة على الشاشة، أوقف إذن "الظهور فوق التطبيقات الأخرى" عن أي تطبيق غير معروف.',
-        stepsAr: const [
-          'اضغط زر "فتح أذونات الظهور فوق التطبيقات" بالأسفل.',
-          'استعرض التطبيقات المسموح لها (Allowed).',
-          'أغلق الإذن عن أي تطبيق ألعاب أو أدوات مشبوهة لا تحتاج لنافذة عائمة.',
+        recommendation:
+            'Revoke "Display over other apps" permission from any unknown utility or game to block full-screen ad popups.',
+        steps: const [
+          'Tap "Open Setting Screen" below to list apps with "Display over other apps" access.',
+          'Review apps marked as "Allowed".',
+          'Tap any suspicious or non-essential app and toggle "Allow display over other apps" OFF.',
         ],
       ),
 
-      // ==================== 9. ACCESSIBILITY & STORAGE ====================
+      // ==================== 10. ACCESSIBILITY & STORAGE ====================
       _SystemControlItem(
         id: 'accessibility_tools',
         category: 'accessibility',
-        titleAr: 'تسهيلات الاستخدام وتكبير الشاشة والاختصارات',
-        titleEn: 'Accessibility, Magnification & One-Handed Mode',
-        subtitleAr: 'تكبير النص، قارئ الشاشة، الإيماءات السريعة، ووضع اليد الواحدة',
+        title: 'Accessibility, Screen Magnification & Shortcuts',
+        categoryTag: 'Ease of Use',
+        subtitle:
+            'Configure screen zoom, high-contrast text, one-handed mode, and installed accessibility services.',
         icon: Icons.accessibility_new_rounded,
         color: _blue,
-        statusLabel: 'تسهيلات النظام',
+        statusLabel: 'Ease of Use',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'accessibility_settings',
-        recommendationAr:
-            'لا تمنح صلاحية "إمكانية الوصول (Accessibility)" لأي تطبيق مجهول المصدر لأنها تمنحه صلاحية قراءة الشاشة.',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات إمكانية الوصول" بالأسفل.',
-          'يمكنك تفعيل "التكبير (Magnification)" لتكبير أي جزء من الشاشة بثلاث نقرات.',
-          'راجع قسم "الخدمات المثبتة (Installed Services)" وتأكد من وجود التطبيقات الموثوقة فقط.',
+        recommendation:
+            'Never grant Accessibility permission to untrusted APK apps, as it allows reading screen content.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open Accessibility settings.',
+          'Check "Downloaded / Installed Services" and ensure only trusted apps are enabled.',
+          'Enable "Magnification" or "One-Handed Mode" for easier navigation.',
         ],
       ),
       _SystemControlItem(
         id: 'internal_storage_system',
         category: 'accessibility',
-        titleAr: 'تفاصيل مساحة تخزين النظام والملفات المؤقتة',
-        titleEn: 'System Storage Breakdown & OS Cleaner',
-        subtitleAr: 'عرض توزيع مساحة التخزين بين النظام، التطبيقات، الصور، والملفات المؤقتة',
+        title: 'System Storage Breakdown & OS Cleaner',
+        categoryTag: 'Storage Health',
+        subtitle:
+            'Inspect storage usage across System, Apps, Videos, Images, and temporary trash.',
         icon: Icons.storage_rounded,
         color: _emerald,
-        statusLabel: 'تحليل المساحة',
+        statusLabel: 'Storage',
         isStatusHealthy: true,
         supportsDirectAction: false,
         targetKey: 'internal_storage',
-        recommendationAr:
-            'إبقاء 15% على الأقل من مساحة الهاتف فارغة يضمن سرعة القراءة والكتابة في الذاكرة الداخلية (UFS).',
-        stepsAr: const [
-          'اضغط زر "فتح إعدادات تخزين الهاتف" بالأسفل.',
-          'انتظر ثوانٍ لحساب المساحة المستخدمة لكل فئة.',
-          'اضغط على "تنظيف (Clean Up)" لحذف الملفات المؤقتة وبقايا التطبيقات المحذوفة.',
+        recommendation:
+            'Keeping at least 15% of internal storage free maintains peak UFS flash read/write speeds.',
+        steps: const [
+          'Tap "Open Setting Screen" below to open native Storage settings.',
+          'Wait a moment for category sizes to calculate.',
+          'Tap "Clean Up" to purge residual cache files and empty the trash bin.',
         ],
       ),
     ];
   }
 
+  bool _matchesDirectControls(String q) {
+    if (q.isEmpty) return true;
+    const keywords =
+        'direct in-app controls flashlight torch ringer audio silent vibrate normal brightness timeout sleep ram memory boost clean';
+    return keywords.contains(q);
+  }
+
+  bool _itemMatchesSearch(_SystemControlItem item, String q) {
+    if (q.isEmpty) return true;
+    return item.title.toLowerCase().contains(q) ||
+        item.categoryTag.toLowerCase().contains(q) ||
+        item.subtitle.toLowerCase().contains(q) ||
+        item.recommendation.toLowerCase().contains(q) ||
+        item.statusLabel.toLowerCase().contains(q);
+  }
+
   @override
   Widget build(BuildContext context) {
     final allItems = _buildAllControlItems();
-    final filteredItems = allItems.where((item) {
-      if (_selectedCategory != 'all' && item.category != _selectedCategory) {
-        return false;
-      }
-      if (_searchQuery.isNotEmpty) {
-        final q = _searchQuery.toLowerCase();
-        final matchAr = item.titleAr.toLowerCase().contains(q) ||
-            item.subtitleAr.toLowerCase().contains(q) ||
-            item.recommendationAr.toLowerCase().contains(q);
-        final matchEn = item.titleEn.toLowerCase().contains(q) ||
-            item.statusLabel.toLowerCase().contains(q);
-        if (!matchAr && !matchEn) return false;
-      }
-      return true;
-    }).toList();
+    final q = _searchQuery.toLowerCase();
 
     return Scaffold(
       backgroundColor: _bg,
@@ -809,7 +914,8 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
                 gradient: const LinearGradient(colors: [_cyan, _violet]),
                 borderRadius: BorderRadius.circular(10),
               ),
-              child: const Icon(Icons.tune_rounded, color: Colors.white, size: 20),
+              child:
+                  const Icon(Icons.tune_rounded, color: Colors.white, size: 20),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -817,16 +923,17 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   const Text(
-                    'مركز التحكم الشامل • Control Hub',
+                    'System Control Hub',
                     style: TextStyle(
-                      fontSize: 15,
+                      fontSize: 15.5,
                       fontWeight: FontWeight.w800,
                       color: _textPrimary,
                     ),
                   ),
                   Text(
-                    '$_deviceBrand • $_androidVersion',
-                    style: const TextStyle(fontSize: 11, color: _textSecondary),
+                    'Collapsible Accordion • $_deviceBrand',
+                    style:
+                        const TextStyle(fontSize: 11, color: _textSecondary),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ],
@@ -835,10 +942,44 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
           ],
         ),
         actions: [
+          TextButton.icon(
+            style: TextButton.styleFrom(
+              visualDensity: VisualDensity.compact,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+            ),
+            onPressed: () {
+              setState(() {
+                if (_expandedGroups.length >= _groups.length) {
+                  _expandedGroups.clear();
+                } else {
+                  for (final g in _groups) {
+                    _expandedGroups.add(g.id);
+                  }
+                }
+              });
+            },
+            icon: Icon(
+              _expandedGroups.length >= _groups.length
+                  ? Icons.unfold_less_rounded
+                  : Icons.unfold_more_rounded,
+              size: 16,
+              color: _cyan,
+            ),
+            label: Text(
+              _expandedGroups.length >= _groups.length
+                  ? 'Collapse All'
+                  : 'Expand All',
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: _cyan,
+              ),
+            ),
+          ),
           IconButton(
-            tooltip: 'تحديث حالات النظام',
+            tooltip: 'Refresh Live States',
             onPressed: _refreshHubState,
-            icon: const Icon(Icons.refresh_rounded, color: _cyan),
+            icon: const Icon(Icons.refresh_rounded, color: _cyan, size: 20),
           ),
         ],
       ),
@@ -849,367 +990,48 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
               backgroundColor: _cardAlt,
               onRefresh: _refreshHubState,
               child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 32),
+                padding: const EdgeInsets.fromLTRB(16, 6, 16, 36),
                 children: [
-                  // 1. DIRECT 1-CLICK QUICK COMMAND COCKPIT
-                  _buildQuickCommandCockpit(),
-                  const SizedBox(height: 14),
-
-                  // 2. SEARCH BAR
+                  // Search Bar
                   _buildSearchBar(),
-                  const SizedBox(height: 12),
-
-                  // 3. CATEGORY FILTER PILLS
-                  _buildCategoryTabs(allItems),
                   const SizedBox(height: 14),
 
-                  // 4. RESULTS HEADER
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'الخصائص والإعدادات (${filteredItems.length})',
-                        style: const TextStyle(
-                          fontSize: 13,
-                          fontWeight: FontWeight.w800,
-                          color: _textPrimary,
-                        ),
-                      ),
-                      TextButton.icon(
-                        style: TextButton.styleFrom(
-                          visualDensity: VisualDensity.compact,
-                          padding: const EdgeInsets.symmetric(horizontal: 8),
-                        ),
-                        onPressed: () {
-                          setState(() {
-                            if (_expandedGuides.length >= filteredItems.length) {
-                              _expandedGuides.clear();
-                            } else {
-                              for (final i in filteredItems) {
-                                _expandedGuides.add(i.id);
-                              }
-                            }
-                          });
-                        },
-                        icon: Icon(
-                          _expandedGuides.length >= filteredItems.length
-                              ? Icons.unfold_less_rounded
-                              : Icons.unfold_more_rounded,
-                          size: 15,
-                          color: _cyan,
-                        ),
-                        label: Text(
-                          _expandedGuides.length >= filteredItems.length
-                              ? 'طي جميع الإرشادات'
-                              : 'عرض جميع الخطوات',
-                          style: const TextStyle(fontSize: 11, color: _cyan),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-
-                  // 5. SETTING CARDS
-                  if (filteredItems.isEmpty)
-                    Container(
-                      padding: const EdgeInsets.all(28),
-                      decoration: BoxDecoration(
-                        color: _card,
-                        borderRadius: BorderRadius.circular(16),
-                        border: Border.all(color: _border),
-                      ),
-                      child: const Column(
-                        children: [
-                          Icon(Icons.search_off_rounded,
-                              size: 38, color: _textSecondary),
-                          SizedBox(height: 10),
-                          Text(
-                            'لا توجد إعدادات مطابقة للبحث الحالي',
-                            style: TextStyle(
-                                color: _textPrimary,
-                                fontWeight: FontWeight.w700),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'جرّب البحث بكلمات مثل: صوت، شاشة، مطور، بصمة، وقت، خلفية، هونر',
-                            style:
-                                TextStyle(fontSize: 11.5, color: _textSecondary),
-                            textAlign: TextAlign.center,
-                          ),
-                        ],
-                      ),
-                    )
-                  else
-                    ...filteredItems.map(_buildControlCard),
+                  // 10 Collapsible Main Category Rectangles
+                  ..._groups.map((grp) {
+                    if (grp.id == 'direct_controls') {
+                      if (!_matchesDirectControls(q)) {
+                        return const SizedBox.shrink();
+                      }
+                      final isExpanded =
+                          q.isNotEmpty || _expandedGroups.contains(grp.id);
+                      return _buildDirectControlsAccordionGroup(
+                        grp,
+                        isExpanded: isExpanded,
+                      );
+                    } else {
+                      final grpItems = allItems
+                          .where((i) =>
+                              i.category == grp.id && _itemMatchesSearch(i, q))
+                          .toList();
+                      if (grpItems.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+                      final isExpanded =
+                          q.isNotEmpty || _expandedGroups.contains(grp.id);
+                      return _buildCategoryAccordionGroup(
+                        grp,
+                        grpItems,
+                        isExpanded: isExpanded,
+                        forceExpandSubItems: q.isNotEmpty,
+                      );
+                    }
+                  }),
                 ],
               ),
             ),
     );
   }
 
-  // ==========================================================================
-  // TOP COCKPIT: DIRECT 1-CLICK HARDWARE & SYSTEM CONTROLS
-  // ==========================================================================
-  Widget _buildQuickCommandCockpit() {
-    return Container(
-      padding: const EdgeInsets.all(15),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            _cyan.withOpacity(0.12),
-            _violet.withOpacity(0.09),
-            _card,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _cyan.withOpacity(0.35)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.flash_on_rounded, color: _cyan, size: 18),
-              const SizedBox(width: 6),
-              const Expanded(
-                child: Text(
-                  'لوحة الضبط الفوري بضغطة زر (Direct In-App Controls)',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w800,
-                    color: _textPrimary,
-                  ),
-                ),
-              ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2.5),
-                decoration: BoxDecoration(
-                  color: _emerald.withOpacity(0.18),
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: const Text(
-                  'LIVE CONTROL',
-                  style: TextStyle(
-                      fontSize: 9.5,
-                      fontWeight: FontWeight.w800,
-                      color: _emerald),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-
-          // Row 1: Torch, Ringer Mode Cycle, Memory Boost
-          Row(
-            children: [
-              Expanded(
-                child: _buildCockpitActionButton(
-                  icon: _isTorchOn
-                      ? Icons.flashlight_on_rounded
-                      : Icons.flashlight_off_rounded,
-                  label: 'الكشاف',
-                  stateText: _isTorchOn ? 'مفعل ON' : 'مغلق OFF',
-                  color: _isTorchOn ? _amber : _cyan,
-                  isActive: _isTorchOn,
-                  onTap: () => _runDirectControl('toggleTorch', !_isTorchOn),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildCockpitActionButton(
-                  icon: _ringerMode == 'silent'
-                      ? Icons.volume_off_rounded
-                      : (_ringerMode == 'vibrate'
-                          ? Icons.vibration_rounded
-                          : Icons.volume_up_rounded),
-                  label: 'وضع الصوت',
-                  stateText: _ringerMode == 'silent'
-                      ? 'صامت'
-                      : (_ringerMode == 'vibrate' ? 'اهتزاز' : 'عام'),
-                  color: _ringerMode == 'normal' ? _emerald : _amber,
-                  isActive: _ringerMode != 'normal',
-                  onTap: () {
-                    final next = _ringerMode == 'normal'
-                        ? 'vibrate'
-                        : (_ringerMode == 'vibrate' ? 'silent' : 'normal');
-                    _runDirectControl('setRingerMode', next);
-                  },
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _buildCockpitActionButton(
-                  icon: Icons.cleaning_services_rounded,
-                  label: 'تنشيط الرام',
-                  stateText: 'تفريغ فوري',
-                  color: _violet,
-                  isActive: false,
-                  onTap: () => _runDirectControl('boostSystemMemory'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 10),
-
-          // Row 2: Instant Brightness Presets
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: _cardAlt.withOpacity(0.85),
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: _border),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    const Icon(Icons.brightness_6_rounded,
-                        size: 15, color: _amber),
-                    const SizedBox(width: 6),
-                    Text(
-                      'سطوع الشاشة المباشر (${_autoBrightness ? "تلقائي" : "$_brightnessPct%"})',
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        fontWeight: FontWeight.w700,
-                        color: _textPrimary,
-                      ),
-                    ),
-                    const Spacer(),
-                    if (!_canWriteSettings)
-                      GestureDetector(
-                        onTap: () => _openSettingTarget(
-                            'write_settings_permission', 'إذن تعديل النظام'),
-                        child: const Text(
-                          'تفعيل الإذن ⚙️',
-                          style: TextStyle(
-                            fontSize: 10.5,
-                            color: _amber,
-                            fontWeight: FontWeight.w700,
-                            decoration: TextDecoration.underline,
-                          ),
-                        ),
-                      ),
-                  ],
-                ),
-                const SizedBox(height: 7),
-                Row(
-                  children: [
-                    _buildMiniPresetChip(
-                      label: 'تلقائي',
-                      selected: _autoBrightness,
-                      color: _emerald,
-                      onTap: () => _runDirectControl('setAutoBrightness', true),
-                    ),
-                    const SizedBox(width: 6),
-                    for (final pct in [25, 50, 75, 100]) ...[
-                      Expanded(
-                        child: _buildMiniPresetChip(
-                          label: '$pct%',
-                          selected: !_autoBrightness &&
-                              (_brightnessPct - pct).abs() <= 12,
-                          color: _amber,
-                          onTap: () => _runDirectControl('setBrightness', pct),
-                        ),
-                      ),
-                      if (pct != 100) const SizedBox(width: 6),
-                    ],
-                  ],
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCockpitActionButton({
-    required IconData icon,
-    required String label,
-    required String stateText,
-    required Color color,
-    required bool isActive,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-        decoration: BoxDecoration(
-          color: isActive ? color.withOpacity(0.2) : _cardAlt,
-          borderRadius: BorderRadius.circular(12),
-          border: Border.all(
-            color: isActive ? color : _border,
-            width: isActive ? 1.4 : 1,
-          ),
-        ),
-        child: Column(
-          children: [
-            Icon(icon, color: color, size: 21),
-            const SizedBox(height: 5),
-            Text(
-              label,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11.5,
-                fontWeight: FontWeight.w700,
-                color: _textPrimary,
-              ),
-            ),
-            const SizedBox(height: 2),
-            Text(
-              stateText,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w600,
-                color: color,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildMiniPresetChip({
-    required String label,
-    required bool selected,
-    required Color color,
-    required VoidCallback onTap,
-  }) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? color.withOpacity(0.22) : _bg,
-          borderRadius: BorderRadius.circular(8),
-          border: Border.all(color: selected ? color : _border),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 11,
-            fontWeight: FontWeight.w700,
-            color: selected ? color : _textSecondary,
-          ),
-        ),
-      ),
-    );
-  }
-
-  // ==========================================================================
-  // SEARCH BAR & CATEGORY TABS
-  // ==========================================================================
   Widget _buildSearchBar() {
     return TextField(
       style: const TextStyle(fontSize: 13, color: _textPrimary),
@@ -1218,7 +1040,7 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
         contentPadding:
             const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         hintText:
-            'ابحث عن أي خاصية (مثال: مطور، وقت، خلفية، كلمة مرور، صوت، هونر)...',
+            'Search settings (e.g., Developer, Password, Wallpaper, Date, Honor)...',
         hintStyle: const TextStyle(fontSize: 12, color: _textSecondary),
         prefixIcon:
             const Icon(Icons.search_rounded, size: 20, color: _cyan),
@@ -1241,339 +1063,604 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
     );
   }
 
-  Widget _buildCategoryTabs(List<_SystemControlItem> allItems) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      child: Row(
-        children: _categories.map((cat) {
-          final isSelected = _selectedCategory == cat.id;
-          final count = cat.id == 'all'
-              ? allItems.length
-              : allItems.where((i) => i.category == cat.id).length;
-          return Padding(
-            padding: const EdgeInsets.only(right: 8),
-            child: InkWell(
-              onTap: () => setState(() => _selectedCategory = cat.id),
-              borderRadius: BorderRadius.circular(12),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                decoration: BoxDecoration(
-                  color: isSelected ? cat.color.withOpacity(0.2) : _card,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: isSelected ? cat.color : _border,
-                    width: isSelected ? 1.5 : 1,
-                  ),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      cat.icon,
-                      size: 15,
-                      color: isSelected ? cat.color : _textSecondary,
-                    ),
-                    const SizedBox(width: 6),
-                    Text(
-                      cat.label,
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight:
-                            isSelected ? FontWeight.w800 : FontWeight.w600,
-                        color: isSelected ? cat.color : _textPrimary,
-                      ),
-                    ),
-                    const SizedBox(width: 6),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 5, vertical: 1),
-                      decoration: BoxDecoration(
-                        color: _cardAlt,
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: Text(
-                        '$count',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                          color: isSelected ? cat.color : _textSecondary,
-                        ),
-                      ),
-                    ),
-                  ],
+  // ==========================================================================
+  // MAIN RECTANGLE HEADER BUILDER (Used by all 10 Accordion Groups)
+  // ==========================================================================
+  Widget _buildMainGroupHeaderRectangle({
+    required _HubGroupMeta group,
+    required int itemCount,
+    required bool isExpanded,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(15),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        decoration: BoxDecoration(
+          color: isExpanded ? group.color.withOpacity(0.14) : _card,
+          borderRadius: BorderRadius.circular(15),
+          border: Border.all(
+            color: isExpanded ? group.color : _border,
+            width: isExpanded ? 1.8 : 1.2,
+          ),
+        ),
+        child: Row(
+          children: [
+            // Number / Icon Box
+            Container(
+              width: 34,
+              height: 34,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                color: group.color.withOpacity(0.18),
+                borderRadius: BorderRadius.circular(9),
+                border: Border.all(color: group.color.withOpacity(0.5)),
+              ),
+              child: Text(
+                group.numberTag,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w800,
+                  color: group.color,
                 ),
               ),
             ),
-          );
-        }).toList(),
+            const SizedBox(width: 11),
+            Expanded(
+              child: Text(
+                group.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w800,
+                  color: _textPrimary,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: _cardAlt,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: group.color.withOpacity(0.35)),
+              ),
+              child: Text(
+                '$itemCount ${group.badgeSuffix}',
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight: FontWeight.w800,
+                  color: group.color,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(
+              isExpanded
+                  ? Icons.keyboard_arrow_down_rounded
+                  : Icons.chevron_right_rounded,
+              color: isExpanded ? group.color : _textSecondary,
+              size: 22,
+            ),
+          ],
+        ),
       ),
     );
   }
 
   // ==========================================================================
-  // INDIVIDUAL SYSTEM CONTROL CARD WITH DIRECT CONTROLS + STEP-BY-STEP GUIDE
+  // GROUP 01: DIRECT IN-APP CONTROLS (Indented Sub-Rectangles with Live Pills)
   // ==========================================================================
-  Widget _buildControlCard(_SystemControlItem item) {
-    final isExpanded = _expandedGuides.contains(item.id);
-    final statusColor = item.isStatusHealthy ? item.color : _coral;
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: _card,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: item.isStatusHealthy
-              ? _border
-              : _coral.withOpacity(0.55),
-        ),
-      ),
+  Widget _buildDirectControlsAccordionGroup(
+    _HubGroupMeta group, {
+    required bool isExpanded,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Top Header Row
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(9),
+          _buildMainGroupHeaderRectangle(
+            group: group,
+            itemCount: 4,
+            isExpanded: isExpanded,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() {
+                if (_expandedGroups.contains(group.id)) {
+                  _expandedGroups.remove(group.id);
+                } else {
+                  _expandedGroups.add(group.id);
+                }
+              });
+            },
+          ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.only(left: 14, top: 8),
+              child: Container(
                 decoration: BoxDecoration(
-                  color: item.color.withOpacity(0.16),
-                  borderRadius: BorderRadius.circular(11),
+                  border: Border(
+                    left: BorderSide(color: group.color, width: 2.5),
+                  ),
                 ),
-                child: Icon(item.icon, color: item.color, size: 21),
-              ),
-              const SizedBox(width: 11),
-              Expanded(
+                padding: const EdgeInsets.only(left: 12),
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      item.titleAr,
-                      style: const TextStyle(
-                        fontSize: 13.5,
-                        fontWeight: FontWeight.w800,
-                        color: _textPrimary,
+                    // Sub-Rectangle 1: Flashlight (Hardware Torch)
+                    _buildDirectSubRectangle(
+                      title: 'Flashlight (Hardware Torch)',
+                      icon: _isTorchOn
+                          ? Icons.flashlight_on_rounded
+                          : Icons.flashlight_off_rounded,
+                      accentColor: _isTorchOn ? _amber : _coral,
+                      trailing: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          _buildActionPill(
+                            label: 'OFF',
+                            selected: !_isTorchOn,
+                            color: _coral,
+                            onTap: () => _runDirectControl('toggleTorch', false),
+                          ),
+                          const SizedBox(width: 6),
+                          _buildActionPill(
+                            label: 'ON',
+                            selected: _isTorchOn,
+                            color: _amber,
+                            onTap: () => _runDirectControl('toggleTorch', true),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      item.titleEn,
-                      style: const TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        color: _cyan,
+                    const SizedBox(height: 8),
+
+                    // Sub-Rectangle 2: Ringer Audio Mode
+                    _buildDirectSubRectangle(
+                      title: 'Ringer Audio Mode',
+                      icon: Icons.volume_up_rounded,
+                      accentColor: _emerald,
+                      trailing: Wrap(
+                        spacing: 5,
+                        children: [
+                          _buildActionPill(
+                            label: 'Normal',
+                            selected: _ringerMode == 'normal',
+                            color: _emerald,
+                            onTap: () =>
+                                _runDirectControl('setRingerMode', 'normal'),
+                          ),
+                          _buildActionPill(
+                            label: 'Vibrate',
+                            selected: _ringerMode == 'vibrate',
+                            color: _amber,
+                            onTap: () =>
+                                _runDirectControl('setRingerMode', 'vibrate'),
+                          ),
+                          _buildActionPill(
+                            label: 'Silent',
+                            selected: _ringerMode == 'silent',
+                            color: _coral,
+                            onTap: () =>
+                                _runDirectControl('setRingerMode', 'silent'),
+                          ),
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      item.subtitleAr,
-                      style: const TextStyle(
-                        fontSize: 11.5,
-                        color: _textSecondary,
-                        height: 1.35,
+                    const SizedBox(height: 8),
+
+                    // Sub-Rectangle 3: Screen Brightness Level
+                    _buildDirectSubRectangle(
+                      title:
+                          'Screen Brightness (${_autoBrightness ? "Auto" : "$_brightnessPct%"})',
+                      icon: Icons.brightness_6_rounded,
+                      accentColor: _amber,
+                      subtitleWidget: !_canWriteSettings
+                          ? GestureDetector(
+                              onTap: () => _openSettingTarget(
+                                  'write_settings_permission',
+                                  'Modify System Settings'),
+                              child: const Padding(
+                                padding: EdgeInsets.only(top: 3),
+                                child: Text(
+                                  'Tap to grant Modify System Settings permission ⚙️',
+                                  style: TextStyle(
+                                    fontSize: 10.5,
+                                    color: _amber,
+                                    decoration: TextDecoration.underline,
+                                  ),
+                                ),
+                              ),
+                            )
+                          : null,
+                      trailing: Wrap(
+                        spacing: 5,
+                        children: [
+                          _buildActionPill(
+                            label: 'Auto',
+                            selected: _autoBrightness,
+                            color: _amber,
+                            onTap: () =>
+                                _runDirectControl('setAutoBrightness', true),
+                          ),
+                          for (final pct in [25, 50, 100])
+                            _buildActionPill(
+                              label: '$pct%',
+                              selected: !_autoBrightness &&
+                                  (_brightnessPct - pct).abs() <= 14,
+                              color: _amber,
+                              onTap: () =>
+                                  _runDirectControl('setBrightness', pct),
+                            ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Sub-Rectangle 4: System RAM & Cache Boost
+                    _buildDirectSubRectangle(
+                      title: 'System RAM & Cache Boost',
+                      icon: Icons.cleaning_services_rounded,
+                      accentColor: _violet,
+                      trailing: _buildActionPill(
+                        label: 'Clean Now ->',
+                        selected: true,
+                        color: _violet,
+                        onTap: () => _runDirectControl('boostSystemMemory'),
                       ),
                     ),
                   ],
                 ),
               ),
-              const SizedBox(width: 8),
-              Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: statusColor.withOpacity(0.16),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: statusColor.withOpacity(0.4)),
-                ),
-                child: Text(
-                  item.statusLabel,
-                  style: TextStyle(
-                    fontSize: 10,
-                    fontWeight: FontWeight.w800,
-                    color: statusColor,
-                  ),
-                ),
-              ),
-            ],
-          ),
-
-          // Direct In-Card Action Controls (if supported)
-          if (item.supportsDirectAction) ...[
-            const SizedBox(height: 12),
-            _buildInlineDirectWidget(item),
-          ],
-
-          const SizedBox(height: 10),
-
-          // SysPulse Recommendation Banner
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-            decoration: BoxDecoration(
-              color: _cardAlt.withOpacity(0.75),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: item.color.withOpacity(0.3)),
             ),
-            child: Row(
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDirectSubRectangle({
+    required String title,
+    required IconData icon,
+    required Color accentColor,
+    required Widget trailing,
+    Widget? subtitleWidget,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: _subCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: _border),
+      ),
+      child: Row(
+        children: [
+          Icon(icon, size: 17, color: accentColor),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(Icons.tips_and_updates_rounded,
-                    size: 15, color: item.color),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'توجيه SysPulse: ${item.recommendationAr}',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: Color(0xFFE2E8F0),
-                      height: 1.35,
-                    ),
+                Text(
+                  title,
+                  style: const TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: FontWeight.w700,
+                    color: _textPrimary,
                   ),
                 ),
+                if (subtitleWidget != null) subtitleWidget,
               ],
             ),
           ),
+          const SizedBox(width: 8),
+          trailing,
+        ],
+      ),
+    );
+  }
 
-          // Expandable Step-by-Step Guide
-          if (isExpanded) ...[
-            const SizedBox(height: 8),
-            Container(
-              padding: const EdgeInsets.all(11),
-              decoration: BoxDecoration(
-                color: _bg.withOpacity(0.75),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(color: _border),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Row(
-                    children: [
-                      Icon(Icons.format_list_numbered_rtl_rounded,
-                          size: 15, color: _cyan),
-                      SizedBox(width: 6),
-                      Text(
-                        'خطوات الضبط السهلة خطوة بخطوة:',
-                        style: TextStyle(
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w800,
-                          color: _cyan,
-                        ),
-                      ),
-                    ],
+  Widget _buildActionPill({
+    required String label,
+    required bool selected,
+    required Color color,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(8),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        decoration: BoxDecoration(
+          color: selected ? color.withOpacity(0.22) : _bg,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(
+            color: selected ? color : _border,
+            width: selected ? 1.4 : 1,
+          ),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            fontSize: 10.5,
+            fontWeight: FontWeight.w800,
+            color: selected ? color : _textSecondary,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================================
+  // GROUPS 02–10: CATEGORY ACCORDION -> INDENTED SUB-RECTANGLES
+  // ==========================================================================
+  Widget _buildCategoryAccordionGroup(
+    _HubGroupMeta group,
+    List<_SystemControlItem> items, {
+    required bool isExpanded,
+    required bool forceExpandSubItems,
+  }) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildMainGroupHeaderRectangle(
+            group: group,
+            itemCount: items.length,
+            isExpanded: isExpanded,
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() {
+                if (_expandedGroups.contains(group.id)) {
+                  _expandedGroups.remove(group.id);
+                } else {
+                  _expandedGroups.add(group.id);
+                }
+              });
+            },
+          ),
+          if (isExpanded)
+            Padding(
+              padding: const EdgeInsets.only(left: 14, top: 8),
+              child: Container(
+                decoration: BoxDecoration(
+                  border: Border(
+                    left: BorderSide(color: group.color, width: 2.5),
                   ),
-                  const SizedBox(height: 6),
-                  ...item.stepsAr.asMap().entries.map((entry) {
-                    final stepNum = entry.key + 1;
+                ),
+                padding: const EdgeInsets.only(left: 12),
+                child: Column(
+                  children: items.map((item) {
+                    final subExpanded = forceExpandSubItems ||
+                        _expandedItems.contains(item.id);
                     return Padding(
-                      padding: const EdgeInsets.only(bottom: 4),
-                      child: Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Container(
-                            width: 18,
-                            height: 18,
-                            margin: const EdgeInsets.only(top: 1, right: 7),
-                            alignment: Alignment.center,
-                            decoration: BoxDecoration(
-                              color: _cyan.withOpacity(0.18),
-                              shape: BoxShape.circle,
-                            ),
-                            child: Text(
-                              '$stepNum',
-                              style: const TextStyle(
-                                fontSize: 10,
-                                fontWeight: FontWeight.w800,
-                                color: _cyan,
-                              ),
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: _buildSubItemRectangle(
+                        item,
+                        isSubExpanded: subExpanded,
+                      ),
+                    );
+                  }).toList(),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ==========================================================================
+  // SUB-RECTANGLE (Collapsed Bar -> Taps to Unfold Step-by-Step Guide & Button)
+  // ==========================================================================
+  Widget _buildSubItemRectangle(
+    _SystemControlItem item, {
+    required bool isSubExpanded,
+  }) {
+    final statusColor = item.isStatusHealthy ? item.color : _coral;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      decoration: BoxDecoration(
+        color: _subCard,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: isSubExpanded
+              ? statusColor.withOpacity(0.75)
+              : (item.isStatusHealthy ? _border : _coral.withOpacity(0.5)),
+          width: isSubExpanded ? 1.5 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Clickable Sub-Rectangle Header Bar
+          InkWell(
+            onTap: () {
+              HapticFeedback.selectionClick();
+              setState(() {
+                if (_expandedItems.contains(item.id)) {
+                  _expandedItems.remove(item.id);
+                } else {
+                  _expandedItems.add(item.id);
+                }
+              });
+            },
+            borderRadius: BorderRadius.circular(12),
+            child: Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+              child: Row(
+                children: [
+                  Icon(item.icon, size: 17, color: item.color),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Text(
+                      item.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: _textPrimary,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 7, vertical: 3),
+                    decoration: BoxDecoration(
+                      color: statusColor.withOpacity(0.15),
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: statusColor.withOpacity(0.4)),
+                    ),
+                    child: Text(
+                      item.statusLabel,
+                      style: TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w800,
+                        color: statusColor,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(
+                    isSubExpanded
+                        ? Icons.keyboard_arrow_down_rounded
+                        : Icons.chevron_right_rounded,
+                    size: 18,
+                    color: isSubExpanded ? statusColor : _textSecondary,
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Unfolded Body when Sub-Rectangle is Tapped
+          if (isSubExpanded)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Divider(color: _border, height: 10),
+                  Text(
+                    item.subtitle,
+                    style: const TextStyle(
+                      fontSize: 11.5,
+                      color: _textSecondary,
+                      height: 1.35,
+                    ),
+                  ),
+
+                  // Inline direct controls if supported
+                  if (item.supportsDirectAction) ...[
+                    const SizedBox(height: 10),
+                    _buildInlineDirectWidget(item),
+                  ],
+
+                  const SizedBox(height: 8),
+
+                  // SysPulse Recommendation Tip
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 10, vertical: 7),
+                    decoration: BoxDecoration(
+                      color: _cardAlt.withOpacity(0.75),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: item.color.withOpacity(0.3)),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Icon(Icons.tips_and_updates_rounded,
+                            size: 14, color: item.color),
+                        const SizedBox(width: 7),
+                        Expanded(
+                          child: Text(
+                            'SysPulse Tip: ${item.recommendation}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFE2E8F0),
+                              height: 1.35,
                             ),
                           ),
-                          Expanded(
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // Step-by-Step Setup Guide Box
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: _bg,
+                      borderRadius: BorderRadius.circular(9),
+                      border: Border.all(color: _border),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Step-by-Step Setup Guide:',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: _cyan,
+                          ),
+                        ),
+                        const SizedBox(height: 5),
+                        ...item.steps.asMap().entries.map((entry) {
+                          final stepNum = entry.key + 1;
+                          return Padding(
+                            padding: const EdgeInsets.only(bottom: 3),
                             child: Text(
-                              entry.value,
+                              '$stepNum. ${entry.value}',
                               style: const TextStyle(
-                                fontSize: 11.5,
+                                fontSize: 11,
                                 color: _textPrimary,
                                 height: 1.35,
                               ),
                             ),
-                          ),
-                        ],
+                          );
+                        }),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+
+                  // Full-Width Launch Setting Screen Button
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton.icon(
+                      onPressed: () =>
+                          _openSettingTarget(item.targetKey, item.title),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: statusColor.withOpacity(0.22),
+                        foregroundColor: statusColor,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(9),
+                          side: BorderSide(color: statusColor.withOpacity(0.6)),
+                        ),
                       ),
-                    );
-                  }),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 15),
+                      label: const Text(
+                        'Open Setting Screen  ->',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.w800),
+                      ),
+                    ),
+                  ),
                 ],
               ),
             ),
-          ],
-
-          const SizedBox(height: 10),
-
-          // Bottom Action Buttons Row: Toggle Guide + Direct Settings Intent
-          Row(
-            children: [
-              OutlinedButton.icon(
-                onPressed: () {
-                  setState(() {
-                    if (isExpanded) {
-                      _expandedGuides.remove(item.id);
-                    } else {
-                      _expandedGuides.add(item.id);
-                    }
-                  });
-                },
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: _textSecondary,
-                  side: const BorderSide(color: _border),
-                  visualDensity: VisualDensity.compact,
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                  shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10)),
-                ),
-                icon: Icon(
-                  isExpanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.help_outline_rounded,
-                  size: 16,
-                  color: _cyan,
-                ),
-                label: Text(
-                  isExpanded ? 'إخفاء الخطوات' : 'عرض الخطوات',
-                  style: const TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w700,
-                      color: _textPrimary),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: () =>
-                      _openSettingTarget(item.targetKey, item.titleAr),
-                  style: FilledButton.styleFrom(
-                    backgroundColor: item.color.withOpacity(0.22),
-                    foregroundColor: item.color,
-                    visualDensity: VisualDensity.compact,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 12, vertical: 9),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(10),
-                      side: BorderSide(color: item.color.withOpacity(0.5)),
-                    ),
-                  ),
-                  icon: const Icon(Icons.open_in_new_rounded, size: 15),
-                  label: const Text(
-                    'فتح نافذة الإعداد مباشرة ➔',
-                    style: TextStyle(
-                        fontSize: 11.5, fontWeight: FontWeight.w800),
-                  ),
-                ),
-              ),
-            ],
-          ),
         ],
       ),
     );
@@ -1582,62 +1669,28 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
   Widget _buildInlineDirectWidget(_SystemControlItem item) {
     if (item.id == 'ringer_volume') {
       return Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(9),
         decoration: BoxDecoration(
           color: _bg,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(9),
           border: Border.all(color: _border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'تحكم مباشر بوضع الصوت ومستوى الوسائط:',
+              'Direct Media Volume Presets:',
               style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10.5,
                   fontWeight: FontWeight.w700,
                   color: _textSecondary),
             ),
             const SizedBox(height: 6),
             Row(
               children: [
-                Expanded(
-                  child: _buildMiniPresetChip(
-                    label: '🔔 عام',
-                    selected: _ringerMode == 'normal',
-                    color: _emerald,
-                    onTap: () => _runDirectControl('setRingerMode', 'normal'),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: _buildMiniPresetChip(
-                    label: '📳 اهتزاز',
-                    selected: _ringerMode == 'vibrate',
-                    color: _amber,
-                    onTap: () => _runDirectControl('setRingerMode', 'vibrate'),
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: _buildMiniPresetChip(
-                    label: '🔕 صامت',
-                    selected: _ringerMode == 'silent',
-                    color: _coral,
-                    onTap: () => _runDirectControl('setRingerMode', 'silent'),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Row(
-              children: [
-                const Text('الصوت:',
-                    style: TextStyle(fontSize: 10.5, color: _textSecondary)),
-                const SizedBox(width: 6),
                 for (final v in [0, 25, 50, 75, 100]) ...[
                   Expanded(
-                    child: _buildMiniPresetChip(
+                    child: _buildActionPill(
                       label: '$v%',
                       selected: (_mediaVolumePct - v).abs() <= 12,
                       color: _cyan,
@@ -1655,19 +1708,19 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
 
     if (item.id == 'brightness_timeout') {
       return Container(
-        padding: const EdgeInsets.all(10),
+        padding: const EdgeInsets.all(9),
         decoration: BoxDecoration(
           color: _bg,
-          borderRadius: BorderRadius.circular(10),
+          borderRadius: BorderRadius.circular(9),
           border: Border.all(color: _border),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
-              'ضبط مباشر لمهلة إغلاق الشاشة (Screen Timeout):',
+              'Direct Screen Sleep Timeout Presets:',
               style: TextStyle(
-                  fontSize: 11,
+                  fontSize: 10.5,
                   fontWeight: FontWeight.w700,
                   color: _textSecondary),
             ),
@@ -1676,8 +1729,8 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
               children: [
                 for (final sec in [30, 60, 120, 300]) ...[
                   Expanded(
-                    child: _buildMiniPresetChip(
-                      label: sec < 60 ? '${sec}ث' : '${sec ~/ 60} دقيقة',
+                    child: _buildActionPill(
+                      label: sec < 60 ? '${sec}s' : '${sec ~/ 60}m',
                       selected: (_screenTimeoutSec - sec).abs() <= 10,
                       color: _amber,
                       onTap: () => _runDirectControl('setScreenTimeout', sec),
@@ -1698,15 +1751,14 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
         child: FilledButton.tonalIcon(
           onPressed: () => _runDirectControl('toggleTorch', !_isTorchOn),
           style: FilledButton.styleFrom(
-            backgroundColor:
-                (_isTorchOn ? _amber : _cyan).withOpacity(0.18),
+            backgroundColor: (_isTorchOn ? _amber : _cyan).withOpacity(0.18),
             foregroundColor: _isTorchOn ? _amber : _cyan,
           ),
           icon: Icon(_isTorchOn
               ? Icons.flashlight_off_rounded
               : Icons.flashlight_on_rounded),
           label: Text(
-            _isTorchOn ? 'إيقاف الكشاف الآن (OFF)' : 'تشغيل الكشاف الآن (ON) 🔦',
+            _isTorchOn ? 'Turn Flashlight OFF' : 'Turn Flashlight ON',
             style: const TextStyle(fontWeight: FontWeight.w800),
           ),
         ),
@@ -1724,7 +1776,7 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
           ),
           icon: const Icon(Icons.cleaning_services_rounded, size: 17),
           label: const Text(
-            'تنظيف الذاكرة المؤقتة الآن بضغطة زر ⚡',
+            'Clean System Memory Now',
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
           ),
         ),
@@ -1735,43 +1787,52 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
   }
 }
 
-class _HubCategoryMeta {
+class _HubGroupMeta {
   final String id;
-  final String label;
+  final String numberTag;
+  final String title;
+  final String badgeSuffix;
   final IconData icon;
   final Color color;
 
-  const _HubCategoryMeta(this.id, this.label, this.icon, this.color);
+  const _HubGroupMeta({
+    required this.id,
+    required this.numberTag,
+    required this.title,
+    required this.badgeSuffix,
+    required this.icon,
+    required this.color,
+  });
 }
 
 class _SystemControlItem {
   final String id;
   final String category;
-  final String titleAr;
-  final String titleEn;
-  final String subtitleAr;
+  final String title;
+  final String categoryTag;
+  final String subtitle;
   final IconData icon;
   final Color color;
   final String statusLabel;
   final bool isStatusHealthy;
   final bool supportsDirectAction;
   final String targetKey;
-  final String recommendationAr;
-  final List<String> stepsAr;
+  final String recommendation;
+  final List<String> steps;
 
   const _SystemControlItem({
     required this.id,
     required this.category,
-    required this.titleAr,
-    required this.titleEn,
-    required this.subtitleAr,
+    required this.title,
+    required this.categoryTag,
+    required this.subtitle,
     required this.icon,
     required this.color,
     required this.statusLabel,
     required this.isStatusHealthy,
     required this.supportsDirectAction,
     required this.targetKey,
-    required this.recommendationAr,
-    required this.stepsAr,
+    required this.recommendation,
+    required this.steps,
   });
 }

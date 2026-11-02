@@ -2195,7 +2195,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('System Control Hub • مركز التحكم الشامل',
+                    Text('Unified System Control Hub',
                         style: AppStyles.cardTitle),
                     Text(
                         'All phone settings in 9 groups: 1-click controls & step-by-step wizard',
@@ -2210,11 +2210,11 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
             spacing: 6,
             runSpacing: 6,
             children: [
-              _buildFeatureBadge('🔊 الصوت والشاشة'),
-              _buildFeatureBadge('🛡️ الأمان وكلمة المرور'),
-              _buildFeatureBadge('⚙️ خيارات المطور'),
-              _buildFeatureBadge('🕒 الوقت والخلفية'),
-              _buildFeatureBadge('⚡ هونر والبطارية'),
+              _buildFeatureBadge('🔊 Audio & Display'),
+              _buildFeatureBadge('🛡️ Security & Lock'),
+              _buildFeatureBadge('⚙️ Developer Options'),
+              _buildFeatureBadge('🕒 Date & Wallpaper'),
+              _buildFeatureBadge('⚡ Honor & Battery'),
             ],
           ),
           const SizedBox(height: 14),
@@ -2232,8 +2232,8 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
               ),
               icon: const Icon(Icons.tune_rounded, size: 18),
               label: const Text(
-                'Open System Control Hub • فتح مركز التحكم ➔',
-                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+                'Open System Control Hub ➔',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
               ),
             ),
           ),
