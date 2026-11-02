@@ -30,6 +30,7 @@
     <!-- Must be requested at runtime via ActivityCompat / permission_handler-->
     <!-- =================================================================== -->
     <uses-permission android:name="android.permission.READ_CALL_LOG" />
+    <uses-permission android:name="android.permission.READ_SMS" />
     <uses-permission android:name="android.permission.READ_PHONE_STATE" />
 
     <!-- =================================================================== -->
@@ -42,6 +43,14 @@
     <!-- Optional: For persistent real-time background telemetry service     -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
+    <!-- =================================================================== -->
+    <!-- 4.1 SYSTEM CONTROL HUB DIRECT ADJUSTMENT PERMISSIONS                -->
+    <!-- Allows 1-click brightness, screen timeout, DND & audio control.     -->
+    <!-- =================================================================== -->
+    <uses-permission android:name="android.permission.WRITE_SETTINGS" tools:ignore="ProtectedPermissions" />
+    <uses-permission android:name="android.permission.ACCESS_NOTIFICATION_POLICY" />
+    <uses-permission android:name="android.permission.BLUETOOTH" />
 
     <!-- =================================================================== -->
     <!-- 5. STORAGE VAULT & CLOUD ARCHIVER PERMISSIONS                       -->

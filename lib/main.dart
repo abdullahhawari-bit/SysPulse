@@ -51,6 +51,7 @@ import 'package:flutter/services.dart';
 import 'config/flavor_config.dart';
 import 'services/monetization_service.dart';
 import 'ui/storage_vault_screen.dart';
+import 'ui/system_control_hub_screen.dart';
 
 Future<void> main() async {
   await bootstrapSysPulseApp(FlavorConfig.standalone());
@@ -382,6 +383,73 @@ class CallAnalyticsData {
   });
 
   int get totalCalls => incoming + outgoing + missed + rejected;
+}
+
+class CallHistoryItem {
+  final String name;
+  final String number;
+  final String type; // 'incoming', 'outgoing', 'missed', 'rejected'
+  final int durationSeconds;
+  final DateTime timestamp;
+
+  const CallHistoryItem({
+    required this.name,
+    required this.number,
+    required this.type,
+    required this.durationSeconds,
+    required this.timestamp,
+  });
+
+  factory CallHistoryItem.fromMap(Map<String, dynamic> m) {
+    return CallHistoryItem(
+      name: (m['name'] as String?)?.isNotEmpty == true
+          ? m['name'] as String
+          : 'Unknown Contact',
+      number: (m['number'] as String?) ?? '',
+      type: (m['type'] as String?) ?? 'incoming',
+      durationSeconds: (m['duration'] as num?)?.toInt() ?? 0,
+      timestamp: DateTime.fromMillisecondsSinceEpoch(
+          (m['timestamp'] as num?)?.toInt() ?? 0),
+    );
+  }
+
+  bool get isIncoming => type == 'incoming';
+  bool get isOutgoing => type == 'outgoing';
+  bool get isMissed => type == 'missed' || type == 'rejected';
+
+  String get durationFormatted {
+    if (isMissed) return 'Missed Call';
+    if (durationSeconds < 60) return '${durationSeconds}s';
+    final m = durationSeconds ~/ 60;
+    final s = durationSeconds % 60;
+    return '${m}m ${s}s';
+  }
+}
+
+class SmsHistoryItem {
+  final String address;
+  final String body;
+  final DateTime timestamp;
+  final bool isInbox;
+
+  const SmsHistoryItem({
+    required this.address,
+    required this.body,
+    required this.timestamp,
+    required this.isInbox,
+  });
+
+  factory SmsHistoryItem.fromMap(Map<String, dynamic> m) {
+    return SmsHistoryItem(
+      address: (m['address'] as String?)?.isNotEmpty == true
+          ? m['address'] as String
+          : 'Unknown',
+      body: (m['body'] as String?) ?? '',
+      timestamp:
+          DateTime.fromMillisecondsSinceEpoch((m['date'] as num?)?.toInt() ?? 0),
+      isInbox: m['isInbox'] == true,
+    );
+  }
 }
 
 class NativePermissionsStatus {
@@ -956,6 +1024,62 @@ class SysPulseNativeBridge {
       return false;
     }
   }
+
+  /// Fetches raw CallLog.Calls and Telephony.Sms records for interactive browsing.
+  Future<Map<String, dynamic>> fetchDetailedCallAndSmsLogs() async {
+    try {
+      final m = await _channel
+          .invokeMapMethod<String, dynamic>('getDetailedCallAndSmsLogs');
+      if (m != null) {
+        final rawCalls = (m['calls'] as List<dynamic>?) ?? [];
+        final rawSms = (m['sms'] as List<dynamic>?) ?? [];
+        final calls = rawCalls
+            .map((c) =>
+                CallHistoryItem.fromMap(Map<String, dynamic>.from(c as Map)))
+            .toList();
+        final sms = rawSms
+            .map((s) =>
+                SmsHistoryItem.fromMap(Map<String, dynamic>.from(s as Map)))
+            .toList();
+        return {
+          'calls': calls,
+          'sms': sms,
+          'hasCallPermission': m['hasCallPermission'] == true,
+          'hasSmsPermission': m['hasSmsPermission'] == true,
+        };
+      }
+    } catch (_) {}
+    return {
+      'calls': <CallHistoryItem>[],
+      'sms': <SmsHistoryItem>[],
+      'hasCallPermission': false,
+      'hasSmsPermission': false,
+    };
+  }
+
+  /// Launches the system phone dialer with the target number pre-filled.
+  Future<bool> launchDialer(String number) async {
+    try {
+      final ok =
+          await _channel.invokeMethod<bool>('launchDialer', {'number': number});
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Dispatches an immediate high-priority status-bar notification via NotificationManager.
+  Future<bool> triggerSmartAlert(String title, String message) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('triggerSmartAlert', {
+        'title': title,
+        'message': message,
+      });
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
 }
 
 // ============================================================================
@@ -1211,6 +1335,596 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
     );
   }
 
+  void _showCallAndSmsLogModal({String initialFilter = 'all'}) {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetCtx) {
+        String activeFilter = initialFilter;
+        String searchQuery = '';
+        Future<Map<String, dynamic>> logsFuture =
+            _bridge.fetchDetailedCallAndSmsLogs();
+
+        return StatefulBuilder(
+          builder: (modalCtx, setModalState) {
+            return Container(
+              height: MediaQuery.of(modalCtx).size.height * 0.88,
+              decoration: const BoxDecoration(
+                color: Color(0xFF0F172A),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    margin: const EdgeInsets.only(top: 10, bottom: 8),
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: AppPalette.border,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 18, vertical: 6),
+                    child: Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(8),
+                          decoration: BoxDecoration(
+                            color: AppPalette.blue.alphaPct(0.18),
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          child: const Icon(Icons.forum_rounded,
+                              color: AppPalette.blue, size: 22),
+                        ),
+                        const SizedBox(width: 12),
+                        const Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text('Call & SMS Activity Log',
+                                  style: AppStyles.cardTitle),
+                              Text('Real-time device history & 1-tap dialer',
+                                  style: AppStyles.caption),
+                            ],
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.refresh_rounded,
+                              color: AppPalette.cyan, size: 20),
+                          tooltip: 'Refresh',
+                          onPressed: () {
+                            setModalState(() {
+                              logsFuture =
+                                  _bridge.fetchDetailedCallAndSmsLogs();
+                            });
+                          },
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close_rounded,
+                              color: AppPalette.textSecondary),
+                          onPressed: () => Navigator.pop(sheetCtx),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Divider(color: AppPalette.border, height: 1),
+                  SingleChildScrollView(
+                    scrollDirection: Axis.horizontal,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 14, vertical: 8),
+                    child: Row(
+                      children: [
+                        _buildFilterPill(
+                          label: 'All Calls',
+                          icon: Icons.call_rounded,
+                          color: AppPalette.blue,
+                          isSelected: activeFilter == 'all',
+                          onTap: () =>
+                              setModalState(() => activeFilter = 'all'),
+                        ),
+                        const SizedBox(width: 6),
+                        _buildFilterPill(
+                          label: 'Incoming',
+                          icon: Icons.call_received_rounded,
+                          color: AppPalette.emerald,
+                          isSelected: activeFilter == 'incoming',
+                          onTap: () =>
+                              setModalState(() => activeFilter = 'incoming'),
+                        ),
+                        const SizedBox(width: 6),
+                        _buildFilterPill(
+                          label: 'Outgoing',
+                          icon: Icons.call_made_rounded,
+                          color: AppPalette.cyan,
+                          isSelected: activeFilter == 'outgoing',
+                          onTap: () =>
+                              setModalState(() => activeFilter = 'outgoing'),
+                        ),
+                        const SizedBox(width: 6),
+                        _buildFilterPill(
+                          label: 'Missed',
+                          icon: Icons.call_missed_rounded,
+                          color: AppPalette.coral,
+                          isSelected: activeFilter == 'missed',
+                          onTap: () =>
+                              setModalState(() => activeFilter = 'missed'),
+                        ),
+                        const SizedBox(width: 6),
+                        _buildFilterPill(
+                          label: 'SMS Messages',
+                          icon: Icons.message_rounded,
+                          color: AppPalette.violet,
+                          isSelected: activeFilter == 'sms',
+                          onTap: () =>
+                              setModalState(() => activeFilter = 'sms'),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 16, vertical: 4),
+                    child: TextField(
+                      style: const TextStyle(
+                          fontSize: 13, color: AppPalette.textPrimary),
+                      decoration: InputDecoration(
+                        isDense: true,
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 12, vertical: 10),
+                        hintText: activeFilter == 'sms'
+                            ? 'Search message text or sender...'
+                            : 'Search contact name or number...',
+                        hintStyle: const TextStyle(
+                            fontSize: 12, color: AppPalette.textSecondary),
+                        prefixIcon: const Icon(Icons.search_rounded,
+                            size: 18, color: AppPalette.textSecondary),
+                        filled: true,
+                        fillColor: AppPalette.cardAlt,
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide:
+                              const BorderSide(color: AppPalette.border),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(10),
+                          borderSide:
+                              const BorderSide(color: AppPalette.border),
+                        ),
+                      ),
+                      onChanged: (val) {
+                        setModalState(() {
+                          searchQuery = val.trim().toLowerCase();
+                        });
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Expanded(
+                    child: FutureBuilder<Map<String, dynamic>>(
+                      future: logsFuture,
+                      builder: (context, snapshot) {
+                        if (snapshot.connectionState ==
+                            ConnectionState.waiting) {
+                          return const Center(
+                            child: CircularProgressIndicator(
+                                color: AppPalette.cyan),
+                          );
+                        }
+                        if (snapshot.hasError) {
+                          return Center(
+                            child: Text(
+                              'Failed to query history: ${snapshot.error}',
+                              style: const TextStyle(
+                                  color: AppPalette.coral, fontSize: 12),
+                            ),
+                          );
+                        }
+
+                        final res = snapshot.data ?? {};
+                        final calls =
+                            (res['calls'] as List<CallHistoryItem>?) ?? [];
+                        final sms =
+                            (res['sms'] as List<SmsHistoryItem>?) ?? [];
+                        final hasCallPerm =
+                            res['hasCallPermission'] == true;
+                        final hasSmsPerm =
+                            res['hasSmsPermission'] == true;
+
+                        if (activeFilter == 'sms') {
+                          if (!hasSmsPerm && sms.isEmpty) {
+                            return _buildLogPermNotice(
+                              title: 'SMS Permission Required',
+                              desc:
+                                  'Grant READ_SMS permission to browse received and sent messages.',
+                              onGrant: () async {
+                                await _handleRequestRuntimePermissions();
+                                setModalState(() {
+                                  logsFuture =
+                                      _bridge.fetchDetailedCallAndSmsLogs();
+                                });
+                              },
+                            );
+                          }
+
+                          final filtered = sms.where((s) {
+                            if (searchQuery.isEmpty) return true;
+                            return s.address
+                                    .toLowerCase()
+                                    .contains(searchQuery) ||
+                                s.body.toLowerCase().contains(searchQuery);
+                          }).toList();
+
+                          if (filtered.isEmpty) {
+                            return const Center(
+                              child: Text('No SMS messages found.',
+                                  style: AppStyles.cardSub),
+                            );
+                          }
+
+                          return ListView.separated(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (ctx, i) =>
+                                _buildSmsCardItem(filtered[i]),
+                          );
+                        } else {
+                          if (!hasCallPerm && calls.isEmpty) {
+                            return _buildLogPermNotice(
+                              title: 'Call Log Permission Required',
+                              desc:
+                                  'Grant READ_CALL_LOG permission to browse incoming, outgoing and missed calls.',
+                              onGrant: () async {
+                                await _handleRequestRuntimePermissions();
+                                setModalState(() {
+                                  logsFuture =
+                                      _bridge.fetchDetailedCallAndSmsLogs();
+                                });
+                              },
+                            );
+                          }
+
+                          final filtered = calls.where((c) {
+                            if (activeFilter == 'incoming' && !c.isIncoming) {
+                              return false;
+                            }
+                            if (activeFilter == 'outgoing' && !c.isOutgoing) {
+                              return false;
+                            }
+                            if (activeFilter == 'missed' && !c.isMissed) {
+                              return false;
+                            }
+                            if (searchQuery.isNotEmpty) {
+                              final mName =
+                                  c.name.toLowerCase().contains(searchQuery);
+                              final mNum =
+                                  c.number.toLowerCase().contains(searchQuery);
+                              if (!mName && !mNum) return false;
+                            }
+                            return true;
+                          }).toList();
+
+                          if (filtered.isEmpty) {
+                            return const Center(
+                              child: Text('No call records match filter.',
+                                  style: AppStyles.cardSub),
+                            );
+                          }
+
+                          return ListView.separated(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 16, vertical: 8),
+                            itemCount: filtered.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: 8),
+                            itemBuilder: (ctx, i) =>
+                                _buildCallCardItem(filtered[i]),
+                          );
+                        }
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildFilterPill({
+    required String label,
+    required IconData icon,
+    required Color color,
+    required bool isSelected,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(10),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: isSelected ? color.alphaPct(0.2) : AppPalette.cardAlt,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(
+            color: isSelected ? color : AppPalette.border,
+            width: isSelected ? 1.5 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 14,
+                color: isSelected ? color : AppPalette.textSecondary),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11.5,
+                fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                color: isSelected ? color : AppPalette.textPrimary,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCallCardItem(CallHistoryItem item) {
+    Color typeColor;
+    IconData typeIcon;
+    String typeLabel;
+
+    if (item.isIncoming) {
+      typeColor = AppPalette.emerald;
+      typeIcon = Icons.call_received_rounded;
+      typeLabel = 'Incoming';
+    } else if (item.isOutgoing) {
+      typeColor = AppPalette.cyan;
+      typeIcon = Icons.call_made_rounded;
+      typeLabel = 'Outgoing';
+    } else {
+      typeColor = AppPalette.coral;
+      typeIcon = Icons.call_missed_rounded;
+      typeLabel = 'Missed';
+    }
+
+    final dateStr = _formatLogTimestamp(item.timestamp);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppPalette.cardAlt.alphaPct(0.7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppPalette.border),
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: typeColor.alphaPct(0.18),
+              borderRadius: BorderRadius.circular(10),
+            ),
+            child: Icon(typeIcon, color: typeColor, size: 18),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: AppPalette.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  item.number.isNotEmpty ? item.number : 'Private / Withheld',
+                  style: const TextStyle(
+                      fontSize: 11.5, color: AppPalette.textSecondary),
+                ),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    Text(
+                      '$typeLabel • ${item.durationFormatted}',
+                      style: TextStyle(
+                          fontSize: 10.5,
+                          fontWeight: FontWeight.w600,
+                          color: typeColor),
+                    ),
+                    const SizedBox(width: 8),
+                    Text(
+                      dateStr,
+                      style: const TextStyle(
+                          fontSize: 10, color: Color(0xFF64748B)),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+          if (item.number.isNotEmpty)
+            IconButton.filledTonal(
+              tooltip: 'Call ${item.number}',
+              icon: const Icon(Icons.call_rounded, size: 17),
+              style: IconButton.styleFrom(
+                backgroundColor: AppPalette.emerald.alphaPct(0.18),
+                foregroundColor: AppPalette.emerald,
+              ),
+              onPressed: () => _bridge.launchDialer(item.number),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSmsCardItem(SmsHistoryItem item) {
+    final isInbox = item.isInbox;
+    final color = isInbox ? AppPalette.cyan : AppPalette.violet;
+    final icon = isInbox ? Icons.mark_chat_unread_rounded : Icons.send_rounded;
+    final badgeText = isInbox ? 'INBOX' : 'SENT';
+    final dateStr = _formatLogTimestamp(item.timestamp);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: AppPalette.cardAlt.alphaPct(0.7),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppPalette.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(7),
+                decoration: BoxDecoration(
+                  color: color.alphaPct(0.18),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Icon(icon, color: color, size: 16),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      item.address,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w700,
+                        color: AppPalette.textPrimary,
+                      ),
+                    ),
+                    Text(dateStr,
+                        style: const TextStyle(
+                            fontSize: 10, color: Color(0xFF64748B))),
+                  ],
+                ),
+              ),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+                decoration: BoxDecoration(
+                  color: color.alphaPct(0.18),
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  badgeText,
+                  style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      color: color),
+                ),
+              ),
+              if (item.address.isNotEmpty && item.address != 'Unknown') ...[
+                const SizedBox(width: 6),
+                IconButton(
+                  icon: const Icon(Icons.call_rounded,
+                      size: 16, color: AppPalette.emerald),
+                  tooltip: 'Dial Number',
+                  constraints:
+                      const BoxConstraints(minWidth: 28, minHeight: 28),
+                  padding: EdgeInsets.zero,
+                  onPressed: () => _bridge.launchDialer(item.address),
+                ),
+              ],
+            ],
+          ),
+          const SizedBox(height: 8),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(9),
+            decoration: BoxDecoration(
+              color: AppPalette.bg.alphaPct(0.6),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: AppPalette.border.alphaPct(0.4)),
+            ),
+            child: Text(
+              item.body.isNotEmpty ? item.body : '(Empty message body)',
+              style: const TextStyle(
+                  fontSize: 11.5, color: Color(0xFFCBD5E1), height: 1.35),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _formatLogTimestamp(DateTime dt) {
+    if (dt.millisecondsSinceEpoch == 0) return 'Recent';
+    final now = DateTime.now();
+    final diff = now.difference(dt);
+    if (diff.inMinutes < 1) return 'Just now';
+    if (diff.inHours < 1) return '${diff.inMinutes}m ago';
+    if (diff.inDays == 0) {
+      final h = dt.hour.toString().padLeft(2, '0');
+      final m = dt.minute.toString().padLeft(2, '0');
+      return 'Today $h:$m';
+    }
+    if (diff.inDays == 1) {
+      final h = dt.hour.toString().padLeft(2, '0');
+      final m = dt.minute.toString().padLeft(2, '0');
+      return 'Yesterday $h:$m';
+    }
+    final m = dt.month.toString().padLeft(2, '0');
+    final d = dt.day.toString().padLeft(2, '0');
+    final h = dt.hour.toString().padLeft(2, '0');
+    final min = dt.minute.toString().padLeft(2, '0');
+    return '$m/$d $h:$min';
+  }
+
+  Widget _buildLogPermNotice({
+    required String title,
+    required String desc,
+    required VoidCallback onGrant,
+  }) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.security_rounded,
+                size: 40, color: AppPalette.amber),
+            const SizedBox(height: 12),
+            Text(title,
+                style: AppStyles.cardTitle, textAlign: TextAlign.center),
+            const SizedBox(height: 6),
+            Text(desc, style: AppStyles.cardSub, textAlign: TextAlign.center),
+            const SizedBox(height: 16),
+            FilledButton.icon(
+              onPressed: onGrant,
+              icon: const Icon(Icons.check_circle_rounded, size: 16),
+              label: const Text('Grant Telemetry Permission'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   void _triggerDetoxPulse() {
     HapticFeedback.heavyImpact();
     Future<void>.delayed(const Duration(milliseconds: 180), () {
@@ -1321,11 +2035,24 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
           color: isNative ? AppPalette.emerald : AppPalette.cyan,
         ),
         IconButton(
+          tooltip: 'System Control Hub',
+          onPressed: _openSystemControlHub,
+          icon: const Icon(Icons.tune_rounded, color: AppPalette.cyan),
+        ),
+        IconButton(
           tooltip: 'Refresh Telemetry',
           onPressed: _loadDashboard,
           icon: const Icon(Icons.refresh_rounded, color: AppPalette.textSecondary),
         ),
       ],
+    );
+  }
+
+  void _openSystemControlHub() {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => const SystemControlHubScreen(),
+      ),
     );
   }
 
@@ -1388,6 +2115,8 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
         _buildTopSummaryStrip(d),
         const SizedBox(height: 16),
         if (showAll) ...[
+          _buildSystemControlHubQuickBanner(),
+          const SizedBox(height: 16),
           _buildStorageVaultQuickBanner(),
           const SizedBox(height: 16),
         ],
@@ -1429,6 +2158,87 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
           if (showAll || _navIndex == 1) _buildCallStatsCard(d.calls),
         ],
       ],
+    );
+  }
+
+  Widget _buildSystemControlHubQuickBanner() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          colors: [
+            AppPalette.violet.withOpacity(0.16),
+            AppPalette.cyan.withOpacity(0.1),
+          ],
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+        ),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: AppPalette.violet.withOpacity(0.42)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppPalette.violet.withOpacity(0.22),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: const Icon(Icons.tune_rounded,
+                    color: AppPalette.cyan, size: 20),
+              ),
+              const SizedBox(width: 10),
+              const Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('System Control Hub • مركز التحكم الشامل',
+                        style: AppStyles.cardTitle),
+                    Text(
+                        'All phone settings in 9 groups: 1-click controls & step-by-step wizard',
+                        style: AppStyles.caption),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Wrap(
+            spacing: 6,
+            runSpacing: 6,
+            children: [
+              _buildFeatureBadge('🔊 الصوت والشاشة'),
+              _buildFeatureBadge('🛡️ الأمان وكلمة المرور'),
+              _buildFeatureBadge('⚙️ خيارات المطور'),
+              _buildFeatureBadge('🕒 الوقت والخلفية'),
+              _buildFeatureBadge('⚡ هونر والبطارية'),
+            ],
+          ),
+          const SizedBox(height: 14),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton.icon(
+              onPressed: _openSystemControlHub,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppPalette.violet,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 11),
+              ),
+              icon: const Icon(Icons.tune_rounded, size: 18),
+              label: const Text(
+                'Open System Control Hub • فتح مركز التحكم ➔',
+                style: TextStyle(fontWeight: FontWeight.w800, fontSize: 12.5),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1796,6 +2606,61 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
             ),
           );
         }).toList(),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: AppPalette.cardAlt.alphaPct(0.6),
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: AppPalette.border.alphaPct(0.5)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.notifications_active_rounded,
+                    size: 16, color: AppPalette.cyan),
+                const SizedBox(width: 8),
+                const Expanded(
+                  child: Text(
+                    'Smart Anomaly Guard: < 1% Battery Drain Monitor Active',
+                    style: TextStyle(
+                        fontSize: 11, color: AppPalette.textSecondary),
+                  ),
+                ),
+                TextButton.icon(
+                  style: TextButton.styleFrom(
+                    visualDensity: VisualDensity.compact,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  ),
+                  onPressed: () async {
+                    final ok = await _bridge.triggerSmartAlert(
+                      'SysPulse Smart Guard',
+                      'Spike detected: Network activity and background wake locks checked.',
+                    );
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Text(ok
+                              ? 'Smart alert dispatched to system status bar!'
+                              : 'Failed to trigger notification. Check permissions.'),
+                          behavior: SnackBarBehavior.floating,
+                        ),
+                      );
+                    }
+                  },
+                  icon: const Icon(Icons.send_rounded,
+                      size: 13, color: AppPalette.cyan),
+                  label: const Text(
+                    'Test Alert',
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        color: AppPalette.cyan),
+                  ),
+                ),
+              ],
+            ),
+          ),
       ),
     );
   }
@@ -2400,19 +3265,25 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                     icon: Icons.call_received_rounded,
                     label: 'Incoming',
                     count: calls.incoming,
-                    color: AppPalette.emerald),
+                    color: AppPalette.emerald,
+                    onTap: () =>
+                        _showCallAndSmsLogModal(initialFilter: 'incoming')),
                 const SizedBox(height: 8),
                 _CallLegendRow(
                     icon: Icons.call_made_rounded,
                     label: 'Outgoing',
                     count: calls.outgoing,
-                    color: AppPalette.cyan),
+                    color: AppPalette.cyan,
+                    onTap: () =>
+                        _showCallAndSmsLogModal(initialFilter: 'outgoing')),
                 const SizedBox(height: 8),
                 _CallLegendRow(
                     icon: Icons.call_missed_rounded,
                     label: 'Missed / Declined',
                     count: calls.missed + calls.rejected,
-                    color: AppPalette.coral),
+                    color: AppPalette.coral,
+                    onTap: () =>
+                        _showCallAndSmsLogModal(initialFilter: 'missed')),
               ]),
             ),
           ]),
@@ -2434,6 +3305,25 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                         fontWeight: FontWeight.w700,
                         color: AppPalette.cyan)),
               ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: () => _showCallAndSmsLogModal(initialFilter: 'all'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppPalette.blue,
+                side: BorderSide(color: AppPalette.blue.alphaPct(0.5)),
+                padding: const EdgeInsets.symmetric(vertical: 11),
+                shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(11)),
+              ),
+              icon: const Icon(Icons.forum_rounded, size: 17),
+              label: const Text(
+                'Open Call & SMS Activity Log ➔',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+              ),
             ),
           ),
         ],
@@ -2684,16 +3574,19 @@ class _CallLegendRow extends StatelessWidget {
   final String label;
   final int count;
   final Color color;
+  final VoidCallback? onTap;
 
-  const _CallLegendRow(
-      {required this.icon,
-      required this.label,
-      required this.count,
-      required this.color});
+  const _CallLegendRow({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.color,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(children: [
+    final rowContent = Row(children: [
       Container(
         width: 26,
         height: 26,
@@ -2709,7 +3602,24 @@ class _CallLegendRow extends StatelessWidget {
               overflow: TextOverflow.ellipsis,
               style: AppStyles.cardSub)),
       Text('$count', style: AppStyles.itemTitle),
+      if (onTap != null) ...[
+        const SizedBox(width: 4),
+        const Icon(Icons.chevron_right_rounded,
+            size: 16, color: AppPalette.textSecondary),
+      ],
     ]);
+
+    if (onTap != null) {
+      return InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(6),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 2),
+          child: rowContent,
+        ),
+      );
+    }
+    return rowContent;
   }
 }
 

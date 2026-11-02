@@ -24,6 +24,18 @@ import android.os.PowerManager
 import android.os.Process
 import android.provider.CallLog
 import android.provider.Settings
+import android.provider.Telephony
+import android.app.KeyguardManager
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.app.PendingIntent
+import android.bluetooth.BluetoothManager
+import android.hardware.camera2.CameraCharacteristics
+import android.hardware.camera2.CameraManager
+import android.media.AudioManager
+import android.net.wifi.WifiManager
+import android.nfc.NfcManager
+import androidx.core.app.NotificationCompat
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.EventChannel
@@ -87,6 +99,7 @@ class MainActivity : FlutterActivity() {
     private var lastTxBytes: Long = 0L
     private val rxHistoryMbps = ArrayDeque<Double>(12)
     private val txHistoryMbps = ArrayDeque<Double>(12)
+    private var isTorchActive: Boolean = false
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
@@ -171,6 +184,34 @@ class MainActivity : FlutterActivity() {
                     }
                     "openBatterySettings" -> {
                         val ok = openBatteryOptimizationSettings()
+                        result.success(ok)
+                    }
+                    "getDetailedCallAndSmsLogs" -> runAsync(result) {
+                        getDetailedCallAndSmsLogs()
+                    }
+                    "launchDialer" -> {
+                        val number = call.argument<String>("number") ?: ""
+                        val ok = launchPhoneDialer(number)
+                        result.success(ok)
+                    }
+                    "triggerSmartAlert" -> {
+                        val title = call.argument<String>("title") ?: "SysPulse Smart Alert"
+                        val message = call.argument<String>("message") ?: "System status alert"
+                        val ok = triggerSmartAlert(title, message)
+                        result.success(ok)
+                    }
+                    "getSystemControlHubState" -> runAsync(result) {
+                        getSystemControlHubState()
+                    }
+                    "executeDirectSystemControl" -> {
+                        val action = call.argument<String>("action") ?: ""
+                        val value = call.argument<Any>("value")
+                        val res = executeDirectSystemControl(action, value)
+                        result.success(res)
+                    }
+                    "openSystemSettingTarget" -> {
+                        val targetKey = call.argument<String>("targetKey") ?: ""
+                        val ok = openSystemSettingTarget(targetKey)
                         result.success(ok)
                     }
                     else -> result.notImplemented()
@@ -1435,6 +1476,573 @@ class MainActivity : FlutterActivity() {
                     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                 }
                 mainHandler.post { startActivity(fallbackIntent) }
+                true
+            } catch (_: Exception) {
+                false
+            }
+        }
+    }
+
+    private fun launchPhoneDialer(number: String): Boolean {
+        if (number.isBlank()) return false
+        return try {
+            val intent = Intent(Intent.ACTION_DIAL).apply {
+                data = Uri.parse("tel:${Uri.encode(number)}")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            mainHandler.post { startActivity(intent) }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun initNotificationChannel() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val channel = NotificationChannel(
+                "syspulse_smart_alerts",
+                "SysPulse Smart Anomaly Alerts",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "Notifies when background data spikes, doomscrolling exceeds 45m, or abnormal battery drain is detected."
+                enableVibration(true)
+            }
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            nm?.createNotificationChannel(channel)
+        }
+    }
+
+    private fun triggerSmartAlert(title: String, message: String): Boolean {
+        return try {
+            initNotificationChannel()
+            val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return false
+            val intent = Intent(this, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                this,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or (if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0)
+            )
+
+            val notification = NotificationCompat.Builder(this, "syspulse_smart_alerts")
+                .setSmallIcon(android.R.drawable.stat_notify_more)
+                .setContentTitle(title)
+                .setContentText(message)
+                .setStyle(NotificationCompat.BigTextStyle().bigText(message))
+                .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setContentIntent(pendingIntent)
+                .setAutoCancel(true)
+                .build()
+
+            nm.notify((System.currentTimeMillis() % 100000).toInt(), notification)
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun getDetailedCallAndSmsLogs(): Map<String, Any> {
+        val callsList = mutableListOf<Map<String, Any>>()
+        val smsList = mutableListOf<Map<String, Any>>()
+
+        // 1. Query Calls (Incoming, Outgoing, Missed, Rejected)
+        if (hasPermission(Manifest.permission.READ_CALL_LOG)) {
+            try {
+                val projection = arrayOf(
+                    CallLog.Calls.CACHED_NAME,
+                    CallLog.Calls.NUMBER,
+                    CallLog.Calls.TYPE,
+                    CallLog.Calls.DURATION,
+                    CallLog.Calls.DATE
+                )
+                contentResolver.query(
+                    CallLog.Calls.CONTENT_URI,
+                    projection,
+                    null,
+                    null,
+                    "${CallLog.Calls.DATE} DESC LIMIT 100"
+                )?.use { cursor ->
+                    val nameIdx = cursor.getColumnIndex(CallLog.Calls.CACHED_NAME)
+                    val numIdx = cursor.getColumnIndex(CallLog.Calls.NUMBER)
+                    val typeIdx = cursor.getColumnIndex(CallLog.Calls.TYPE)
+                    val durIdx = cursor.getColumnIndex(CallLog.Calls.DURATION)
+                    val dateIdx = cursor.getColumnIndex(CallLog.Calls.DATE)
+
+                    while (cursor.moveToNext()) {
+                        val name = if (nameIdx >= 0) cursor.getString(nameIdx) ?: "" else ""
+                        val num = if (numIdx >= 0) cursor.getString(numIdx) ?: "" else ""
+                        val rawType = if (typeIdx >= 0) cursor.getInt(typeIdx) else 0
+                        val dur = if (durIdx >= 0) cursor.getLong(durIdx) else 0L
+                        val date = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L
+
+                        val typeStr = when (rawType) {
+                            CallLog.Calls.INCOMING_TYPE -> "incoming"
+                            CallLog.Calls.OUTGOING_TYPE -> "outgoing"
+                            CallLog.Calls.MISSED_TYPE -> "missed"
+                            CallLog.Calls.REJECTED_TYPE -> "rejected"
+                            else -> "other"
+                        }
+
+                        callsList.add(mapOf(
+                            "name" to (if (name.isNotBlank()) name else (if (num.isNotBlank()) num else "Unknown Contact")),
+                            "number" to num,
+                            "type" to typeStr,
+                            "duration" to dur,
+                            "timestamp" to date
+                        ))
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        // 2. Query SMS Messages (Inbox & Sent)
+        if (hasPermission(Manifest.permission.READ_SMS)) {
+            try {
+                val uri = Telephony.Sms.CONTENT_URI
+                val projection = arrayOf(
+                    Telephony.Sms.ADDRESS,
+                    Telephony.Sms.BODY,
+                    Telephony.Sms.DATE,
+                    Telephony.Sms.TYPE
+                )
+                contentResolver.query(
+                    uri,
+                    projection,
+                    null,
+                    null,
+                    "${Telephony.Sms.DATE} DESC LIMIT 100"
+                )?.use { cursor ->
+                    val addrIdx = cursor.getColumnIndex(Telephony.Sms.ADDRESS)
+                    val bodyIdx = cursor.getColumnIndex(Telephony.Sms.BODY)
+                    val dateIdx = cursor.getColumnIndex(Telephony.Sms.DATE)
+                    val typeIdx = cursor.getColumnIndex(Telephony.Sms.TYPE)
+
+                    while (cursor.moveToNext()) {
+                        val address = if (addrIdx >= 0) cursor.getString(addrIdx) ?: "" else ""
+                        val body = if (bodyIdx >= 0) cursor.getString(bodyIdx) ?: "" else ""
+                        val date = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L
+                        val type = if (typeIdx >= 0) cursor.getInt(typeIdx) else 1
+
+                        smsList.add(mapOf(
+                            "address" to (if (address.isNotBlank()) address else "Unknown"),
+                            "body" to body,
+                            "date" to date,
+                            "isInbox" to (type == Telephony.Sms.MESSAGE_TYPE_INBOX)
+                        ))
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        return mapOf(
+            "calls" to callsList,
+            "sms" to smsList,
+            "hasCallPermission" to hasPermission(Manifest.permission.READ_CALL_LOG),
+            "hasSmsPermission" to hasPermission(Manifest.permission.READ_SMS)
+        )
+    }
+
+    // =========================================================================
+    // 10. UNIFIED SYSTEM CONTROL HUB (Direct Actions + Deep Settings Intents)
+    // =========================================================================
+
+    private fun getSystemControlHubState(): Map<String, Any> {
+        val audio = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+        val ringerModeStr = when (audio?.ringerMode) {
+            AudioManager.RINGER_MODE_SILENT -> "silent"
+            AudioManager.RINGER_MODE_VIBRATE -> "vibrate"
+            else -> "normal"
+        }
+        val maxMedia = max(1, audio?.getStreamMaxVolume(AudioManager.STREAM_MUSIC) ?: 15)
+        val curMedia = audio?.getStreamVolume(AudioManager.STREAM_MUSIC) ?: 8
+        val mediaVolPct = ((curMedia.toDouble() / maxMedia.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
+
+        val maxRing = max(1, audio?.getStreamMaxVolume(AudioManager.STREAM_RING) ?: 7)
+        val curRing = audio?.getStreamVolume(AudioManager.STREAM_RING) ?: 5
+        val ringVolPct = ((curRing.toDouble() / maxRing.toDouble()) * 100.0).roundToInt().coerceIn(0, 100)
+
+        val rawBrightness = try {
+            Settings.System.getInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 128)
+        } catch (_: Exception) {
+            128
+        }
+        val brightnessPct = ((rawBrightness.toDouble() / 255.0) * 100.0).roundToInt().coerceIn(5, 100)
+
+        val autoBrightness = try {
+            Settings.System.getInt(
+                contentResolver,
+                Settings.System.SCREEN_BRIGHTNESS_MODE,
+                Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+            ) == Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC
+        } catch (_: Exception) {
+            true
+        }
+
+        val timeoutMs = try {
+            Settings.System.getInt(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, 60000)
+        } catch (_: Exception) {
+            60000
+        }
+        val timeoutSec = max(15, timeoutMs / 1000)
+
+        val adbEnabled = try {
+            Settings.Global.getInt(contentResolver, Settings.Global.ADB_ENABLED, 0) == 1
+        } catch (_: Exception) {
+            false
+        }
+
+        val devOptionsEnabled = try {
+            Settings.Global.getInt(contentResolver, Settings.Global.DEVELOPMENT_SETTINGS_ENABLED, 0) == 1
+        } catch (_: Exception) {
+            false
+        }
+
+        val autoTime = try {
+            Settings.Global.getInt(contentResolver, Settings.Global.AUTO_TIME, 1) == 1
+        } catch (_: Exception) {
+            true
+        }
+
+        val autoTimeZone = try {
+            Settings.Global.getInt(contentResolver, Settings.Global.AUTO_TIME_ZONE, 1) == 1
+        } catch (_: Exception) {
+            true
+        }
+
+        val keyguard = getSystemService(Context.KEYGUARD_SERVICE) as? KeyguardManager
+        val isDeviceSecure = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            keyguard?.isDeviceSecure == true
+        } else {
+            keyguard?.isKeyguardSecure == true
+        }
+
+        val wifiMgr = applicationContext.getSystemService(Context.WIFI_SERVICE) as? WifiManager
+        val wifiEnabled = try {
+            wifiMgr?.isWifiEnabled == true
+        } catch (_: Exception) {
+            true
+        }
+
+        val btMgr = getSystemService(Context.BLUETOOTH_SERVICE) as? BluetoothManager
+        val btEnabled = try {
+            btMgr?.adapter?.isEnabled == true
+        } catch (_: Exception) {
+            false
+        }
+
+        val nfcMgr = getSystemService(Context.NFC_SERVICE) as? NfcManager
+        val nfcEnabled = try {
+            nfcMgr?.defaultAdapter?.isEnabled == true
+        } catch (_: Exception) {
+            false
+        }
+
+        val powerMgr = getSystemService(Context.POWER_SERVICE) as? PowerManager
+        val batterySaverOn = powerMgr?.isPowerSaveMode == true
+
+        val canWriteSettings = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Settings.System.canWrite(this)
+        } else {
+            true
+        }
+
+        val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+        val dndGranted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            nm?.isNotificationPolicyAccessGranted == true
+        } else {
+            true
+        }
+
+        return mapOf(
+            "isTorchOn" to isTorchActive,
+            "ringerMode" to ringerModeStr,
+            "mediaVolumePct" to mediaVolPct,
+            "ringVolumePct" to ringVolPct,
+            "brightnessPct" to brightnessPct,
+            "autoBrightness" to autoBrightness,
+            "screenTimeoutSec" to timeoutSec,
+            "adbEnabled" to adbEnabled,
+            "devOptionsEnabled" to devOptionsEnabled,
+            "autoTimeEnabled" to autoTime,
+            "autoTimeZoneEnabled" to autoTimeZone,
+            "isDeviceSecure" to isDeviceSecure,
+            "wifiEnabled" to wifiEnabled,
+            "bluetoothEnabled" to btEnabled,
+            "nfcEnabled" to nfcEnabled,
+            "batterySaverOn" to batterySaverOn,
+            "canWriteSettings" to canWriteSettings,
+            "dndPolicyGranted" to dndGranted,
+            "deviceBrand" to "${Build.MANUFACTURER.uppercase(Locale.US)} ${Build.MODEL}",
+            "androidVersion" to "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+        )
+    }
+
+    private fun executeDirectSystemControl(action: String, value: Any?): Map<String, Any> {
+        return try {
+            when (action) {
+                "toggleTorch" -> {
+                    val camMgr = getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+                        ?: return mapOf("ok" to false, "message" to "Camera service unavailable")
+                    var targetCamId: String? = null
+                    for (id in camMgr.cameraIdList) {
+                        val chars = camMgr.getCameraCharacteristics(id)
+                        val hasFlash = chars.get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                        if (hasFlash) {
+                            targetCamId = id
+                            break
+                        }
+                    }
+                    if (targetCamId == null) {
+                        return mapOf("ok" to false, "message" to "No hardware flashlight found on device")
+                    }
+                    val nextState = (value as? Boolean) ?: !isTorchActive
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                        camMgr.setTorchMode(targetCamId, nextState)
+                        isTorchActive = nextState
+                    }
+                    mapOf(
+                        "ok" to true,
+                        "state" to isTorchActive,
+                        "message" to if (isTorchActive) "Flashlight turned ON 🔦" else "Flashlight turned OFF"
+                    )
+                }
+
+                "setRingerMode" -> {
+                    val modeReq = (value as? String) ?: "normal"
+                    val audio = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                        ?: return mapOf("ok" to false, "message" to "Audio service unavailable")
+                    val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+
+                    if (modeReq == "silent" && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && nm?.isNotificationPolicyAccessGranted == false) {
+                        // Fallback to vibrate or prompt DND policy access
+                        audio.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+                        openSystemSettingTarget("dnd_policy_access")
+                        return mapOf(
+                            "ok" to true,
+                            "state" to "vibrate",
+                            "message" to "Switched to Vibrate. Grant Do-Not-Disturb permission in the opened screen for total Silent mode."
+                        )
+                    }
+
+                    audio.ringerMode = when (modeReq) {
+                        "silent" -> AudioManager.RINGER_MODE_SILENT
+                        "vibrate" -> AudioManager.RINGER_MODE_VIBRATE
+                        else -> AudioManager.RINGER_MODE_NORMAL
+                    }
+                    mapOf(
+                        "ok" to true,
+                        "state" to modeReq,
+                        "message" to "Ringer mode set to ${modeReq.uppercase(Locale.US)} 🔔"
+                    )
+                }
+
+                "setMediaVolume" -> {
+                    val pct = ((value as? Number)?.toInt() ?: 50).coerceIn(0, 100)
+                    val audio = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+                        ?: return mapOf("ok" to false, "message" to "Audio service unavailable")
+                    val maxVol = max(1, audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC))
+                    val targetVol = ((pct / 100.0) * maxVol).roundToInt().coerceIn(0, maxVol)
+                    audio.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, AudioManager.FLAG_SHOW_UI)
+                    mapOf(
+                        "ok" to true,
+                        "state" to pct,
+                        "message" to "Media volume adjusted to $pct% 🔊"
+                    )
+                }
+
+                "setBrightness" -> {
+                    val pct = ((value as? Number)?.toInt() ?: 50).coerceIn(5, 100)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.System.canWrite(this)) {
+                        openSystemSettingTarget("write_settings_permission")
+                        return mapOf(
+                            "ok" to false,
+                            "requiresWritePermission" to true,
+                            "message" to "Please allow 'Modify System Settings' in the opened screen to control brightness directly."
+                        )
+                    }
+                    val rawVal = ((pct / 100.0) * 255.0).roundToInt().coerceIn(10, 255)
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                    )
+                    Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, rawVal)
+                    mapOf(
+                        "ok" to true,
+                        "state" to pct,
+                        "message" to "Screen brightness set to $pct% ☀️"
+                    )
+                }
+
+                "setAutoBrightness" -> {
+                    val enable = (value as? Boolean) ?: true
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.System.canWrite(this)) {
+                        openSystemSettingTarget("write_settings_permission")
+                        return mapOf(
+                            "ok" to false,
+                            "requiresWritePermission" to true,
+                            "message" to "Please allow 'Modify System Settings' in the opened screen first."
+                        )
+                    }
+                    Settings.System.putInt(
+                        contentResolver,
+                        Settings.System.SCREEN_BRIGHTNESS_MODE,
+                        if (enable) Settings.System.SCREEN_BRIGHTNESS_MODE_AUTOMATIC else Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                    )
+                    mapOf(
+                        "ok" to true,
+                        "state" to enable,
+                        "message" to if (enable) "Adaptive Auto-Brightness Enabled ✨" else "Manual Brightness Mode Active"
+                    )
+                }
+
+                "setScreenTimeout" -> {
+                    val seconds = ((value as? Number)?.toInt() ?: 60).coerceIn(15, 1800)
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && !Settings.System.canWrite(this)) {
+                        openSystemSettingTarget("write_settings_permission")
+                        return mapOf(
+                            "ok" to false,
+                            "requiresWritePermission" to true,
+                            "message" to "Allow 'Modify System Settings' in the opened screen to adjust screen timeout directly."
+                        )
+                    }
+                    Settings.System.putInt(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, seconds * 1000)
+                    mapOf(
+                        "ok" to true,
+                        "state" to seconds,
+                        "message" to "Screen timeout set to ${if (seconds >= 60) "${seconds / 60} min" else "${seconds}s"} ⏱️"
+                    )
+                }
+
+                "boostSystemMemory" -> {
+                    System.gc()
+                    mapOf(
+                        "ok" to true,
+                        "message" to "System garbage collection & memory trim executed ⚡"
+                    )
+                }
+
+                else -> mapOf("ok" to false, "message" to "Unknown direct control action: $action")
+            }
+        } catch (e: Exception) {
+            mapOf("ok" to false, "message" to "Action requires manual confirmation in Settings (${e.javaClass.simpleName})")
+        }
+    }
+
+    private fun openSystemSettingTarget(targetKey: String): Boolean {
+        val primaryIntent: Intent = when (targetKey) {
+            // 1. Audio & Sound
+            "sound_settings" -> Intent(Settings.ACTION_SOUND_SETTINGS)
+            "dnd_settings" -> Intent(Settings.ACTION_ZEN_MODE_PRIORITY_SETTINGS)
+            "dnd_policy_access" -> Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
+            "notification_settings" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(Settings.ACTION_ALL_APPS_NOTIFICATION_SETTINGS)
+            } else {
+                Intent(Settings.ACTION_SOUND_SETTINGS)
+            }
+
+            // 2. Display & Theme
+            "display_settings" -> Intent(Settings.ACTION_DISPLAY_SETTINGS)
+            "wallpaper_settings" -> Intent(Intent.ACTION_SET_WALLPAPER)
+            "night_display_settings" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(Settings.ACTION_NIGHT_DISPLAY_SETTINGS)
+            } else {
+                Intent(Settings.ACTION_DISPLAY_SETTINGS)
+            }
+            "cast_display" -> Intent(Settings.ACTION_CAST_SETTINGS)
+            "write_settings_permission" -> Intent(
+                Settings.ACTION_MANAGE_WRITE_SETTINGS,
+                Uri.parse("package:$packageName")
+            )
+
+            // 3. Security, Lock & Privacy
+            "security_settings" -> Intent(Settings.ACTION_SECURITY_SETTINGS)
+            "screen_lock" -> Intent("android.app.action.SET_NEW_PASSWORD")
+            "biometric_enroll" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+                Intent(Settings.ACTION_BIOMETRIC_ENROLL)
+            } else {
+                Intent(Settings.ACTION_SECURITY_SETTINGS)
+            }
+            "privacy_settings" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                Intent(Settings.ACTION_PRIVACY_SETTINGS)
+            } else {
+                Intent(Settings.ACTION_SECURITY_SETTINGS)
+            }
+            "location_settings" -> Intent(Settings.ACTION_LOCATION_SOURCE_SETTINGS)
+            "unknown_sources" -> if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                Intent(Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES, Uri.parse("package:$packageName"))
+            } else {
+                Intent(Settings.ACTION_SECURITY_SETTINGS)
+            }
+
+            // 4. Connectivity & Network
+            "wifi_settings" -> Intent(Settings.ACTION_WIFI_SETTINGS)
+            "bluetooth_settings" -> Intent(Settings.ACTION_BLUETOOTH_SETTINGS)
+            "hotspot_settings" -> Intent("android.settings.TETHER_SETTINGS")
+            "data_roaming_sim" -> Intent(Settings.ACTION_DATA_ROAMING_SETTINGS)
+            "airplane_wireless" -> Intent(Settings.ACTION_AIRPLANE_MODE_SETTINGS)
+            "nfc_settings" -> Intent(Settings.ACTION_NFC_SETTINGS)
+            "vpn_settings" -> Intent(Settings.ACTION_VPN_SETTINGS)
+            "private_dns_wireless" -> Intent(Settings.ACTION_WIRELESS_SETTINGS)
+
+            // 5. Battery & Performance
+            "battery_saver" -> Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS)
+            "honor_app_launch" -> {
+                return openBatteryOptimizationSettings()
+            }
+            "ignore_battery_opt" -> Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            "power_usage_summary" -> Intent(Intent.ACTION_POWER_USAGE_SUMMARY)
+
+            // 6. Developer Options & System
+            "developer_options" -> Intent(Settings.ACTION_APPLICATION_DEVELOPMENT_SETTINGS)
+            "device_info_build" -> Intent(Settings.ACTION_DEVICE_INFO_SETTINGS)
+
+            // 7. Date, Time, Language & Input
+            "date_time_settings" -> Intent(Settings.ACTION_DATE_SETTINGS)
+            "locale_language" -> Intent(Settings.ACTION_LOCALE_SETTINGS)
+            "keyboard_input" -> Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)
+            "user_dictionary" -> Intent(Settings.ACTION_USER_DICTIONARY_SETTINGS)
+
+            // 8. Apps & Permissions
+            "manage_all_apps" -> Intent(Settings.ACTION_MANAGE_ALL_APPLICATIONS_SETTINGS)
+            "default_apps" -> Intent(Settings.ACTION_MANAGE_DEFAULT_APPS_SETTINGS)
+            "overlay_permission" -> Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION)
+            "usage_access" -> Intent(Settings.ACTION_USAGE_ACCESS_SETTINGS)
+
+            // 9. Accessibility & Storage
+            "accessibility_settings" -> Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)
+            "captioning_settings" -> Intent(Settings.ACTION_CAPTIONING_SETTINGS)
+            "internal_storage" -> Intent(Settings.ACTION_INTERNAL_STORAGE_SETTINGS)
+
+            else -> Intent(Settings.ACTION_SETTINGS)
+        }
+
+        return launchSafeIntent(primaryIntent)
+    }
+
+    private fun launchSafeIntent(primary: Intent): Boolean {
+        try {
+            primary.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            startActivity(primary)
+            return true
+        } catch (_: Exception) {
+            try {
+                // Fallback chooser if wallpaper intent
+                if (primary.action == Intent.ACTION_SET_WALLPAPER) {
+                    val chooser = Intent.createChooser(primary, "Select Wallpaper").apply {
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    }
+                    startActivity(chooser)
+                    return true
+                }
+            } catch (_: Exception) {}
+            return try {
+                val fallback = Intent(Settings.ACTION_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                startActivity(fallback)
                 true
             } catch (_: Exception) {
                 false
