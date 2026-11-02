@@ -181,6 +181,11 @@ class StorageVaultSummary {
   final List<VaultFileItem> screenshotFiles;
   final List<VaultFileItem> burstFiles;
 
+  /// Scan diagnostics (shows the effect of the native hash cache)
+  final int scanMillis;
+  final int cacheHits;
+  final int cacheMisses;
+
   const StorageVaultSummary({
     required this.totalBytes,
     required this.usedBytes,
@@ -194,6 +199,9 @@ class StorageVaultSummary {
     required this.socialMediaFiles,
     required this.screenshotFiles,
     required this.burstFiles,
+    this.scanMillis = 0,
+    this.cacheHits = 0,
+    this.cacheMisses = 0,
   });
 
   int get totalDuplicateWasteBytes {
@@ -492,6 +500,9 @@ class StorageVaultService {
       socialMediaFiles: socialMediaFiles,
       screenshotFiles: screenshotFiles,
       burstFiles: burstFiles,
+      scanMillis: (raw['scanMillis'] as num?)?.toInt() ?? 0,
+      cacheHits: (raw['cacheHits'] as num?)?.toInt() ?? 0,
+      cacheMisses: (raw['cacheMisses'] as num?)?.toInt() ?? 0,
     );
   }
 

@@ -249,6 +249,19 @@ class NetworkTelemetry {
   });
 }
 
+/// Lightweight live sample pushed by the native EventChannel (no full rebuild needed).
+class LiveNetSample {
+  final double downMbps, upMbps;
+  final List<double> rxSeries, txSeries;
+
+  const LiveNetSample({
+    required this.downMbps,
+    required this.upMbps,
+    required this.rxSeries,
+    required this.txSeries,
+  });
+}
+
 class BatteryDrainItem {
   final String appName, packageName;
   final double drainPercent;
@@ -400,6 +413,25 @@ class SysPulseNativeBridge {
   /// Connects to `MainActivity.kt` (`configureFlutterEngine`) on Android.
   static const MethodChannel _channel =
       MethodChannel('com.syspulse.mobile/telemetry');
+
+  /// Native push stream: Kotlin sends one sample every 1.5s ONLY while listened to.
+  static const EventChannel _networkStream =
+      EventChannel('com.syspulse.mobile/network_stream');
+
+  Stream<LiveNetSample> liveNetworkStream() {
+    return _networkStream.receiveBroadcastStream().map((dynamic event) {
+      final m = Map<String, dynamic>.from(event as Map);
+      List<double> toList(dynamic v) => (v as List<dynamic>? ?? const [])
+          .map((e) => (e as num).toDouble())
+          .toList();
+      return LiveNetSample(
+        downMbps: (m['liveDownMbps'] as num?)?.toDouble() ?? 0.0,
+        upMbps: (m['liveUpMbps'] as num?)?.toDouble() ?? 0.0,
+        rxSeries: toList(m['rxSeriesMbps']),
+        txSeries: toList(m['txSeriesMbps']),
+      );
+    });
+  }
 
   static const _accentCycle = <Color>[
     AppPalette.coral,
@@ -863,36 +895,47 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
   bool _rescanningSecurity = false;
   String? _busyAlertId;
   int _navIndex = 0;
-  Timer? _liveTelemetryTimer;
+
+  /// Live network sample pushed from Kotlin; only the widgets listening to this
+  /// notifier rebuild every tick (not the whole dashboard).
+  final ValueNotifier<LiveNetSample?> _liveNet = ValueNotifier<LiveNetSample?>(null);
+  StreamSubscription<LiveNetSample>? _liveNetSub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     _loadDashboard();
-    _startLiveSamplingTimer();
+    _syncLiveStream();
   }
 
-  void _startLiveSamplingTimer() {
-    _liveTelemetryTimer?.cancel();
-    _liveTelemetryTimer =
-        Timer.periodic(const Duration(milliseconds: 1500), (_) async {
-      if (!mounted || _data == null) return;
-      // Only sample in real time when Home (0) or Network (2) tab is active
-      if (_navIndex != 0 && _navIndex != 2) return;
-      try {
-        final net = await _bridge.fetchNetworkStats();
-        if (!mounted) return;
-        setState(() {
-          _data = _data!.copyWith(network: net);
-        });
-      } catch (_) {}
-    });
+  bool get _liveStreamWanted => _navIndex == 0 || _navIndex == 2;
+
+  /// Start the native push stream only while Home/Network is visible; stop it otherwise
+  /// (zero CPU / battery cost on other tabs or when the app is in background).
+  void _syncLiveStream() {
+    if (_liveStreamWanted) {
+      if (_liveNetSub != null) return;
+      _liveNetSub = _bridge.liveNetworkStream().listen(
+        (sample) => _liveNet.value = sample,
+        onError: (_) {},
+        cancelOnError: false,
+      );
+    } else {
+      _liveNetSub?.cancel();
+      _liveNetSub = null;
+    }
+  }
+
+  void _stopLiveStream() {
+    _liveNetSub?.cancel();
+    _liveNetSub = null;
   }
 
   @override
   void dispose() {
-    _liveTelemetryTimer?.cancel();
+    _stopLiveStream();
+    _liveNet.dispose();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -901,9 +944,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
       _loadDashboard();
-      _startLiveSamplingTimer();
+      _syncLiveStream();
     } else if (state == AppLifecycleState.paused) {
-      _liveTelemetryTimer?.cancel();
+      _stopLiveStream();
     }
   }
 
@@ -1069,7 +1112,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
         backgroundColor: AppPalette.bg,
         indicatorColor: AppPalette.cyan.alphaPct(0.18),
         selectedIndex: _navIndex,
-        onDestinationSelected: (i) => setState(() => _navIndex = i),
+        onDestinationSelected: (i) {
+          setState(() => _navIndex = i);
+          _syncLiveStream();
+        },
         destinations: const [
           NavigationDestination(
               icon: Icon(Icons.dashboard_outlined),
@@ -1218,7 +1264,10 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
           SizedBox(
             width: double.infinity,
             child: ElevatedButton.icon(
-              onPressed: () => setState(() => _navIndex = 4),
+              onPressed: () {
+                setState(() => _navIndex = 4);
+                _syncLiveStream();
+              },
               style: ElevatedButton.styleFrom(
                 backgroundColor: AppPalette.cyan,
                 foregroundColor: AppPalette.bg,
@@ -1600,23 +1649,27 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           const SizedBox(height: 12),
-          Row(children: [
-            Expanded(
-                child: _TrafficStatBox(
-                    title: 'DATA IN (RX)',
-                    total: '${net.dataInGb.toStringAsFixed(2)} GB',
-                    rate: _formatThroughput(net.liveDownMbps),
-                    icon: Icons.arrow_downward_rounded,
-                    color: AppPalette.cyan)),
-            const SizedBox(width: 10),
-            Expanded(
-                child: _TrafficStatBox(
-                    title: 'DATA OUT (TX)',
-                    total: '${net.dataOutGb.toStringAsFixed(2)} GB',
-                    rate: _formatThroughput(net.liveUpMbps),
-                    icon: Icons.arrow_upward_rounded,
-                    color: AppPalette.violet)),
-          ]),
+          // Only this Row rebuilds on each live tick (not the whole dashboard)
+          ValueListenableBuilder<LiveNetSample?>(
+            valueListenable: _liveNet,
+            builder: (_, live, __) => Row(children: [
+              Expanded(
+                  child: _TrafficStatBox(
+                      title: 'DATA IN (RX)',
+                      total: '${net.dataInGb.toStringAsFixed(2)} GB',
+                      rate: _formatThroughput(live?.downMbps ?? net.liveDownMbps),
+                      icon: Icons.arrow_downward_rounded,
+                      color: AppPalette.cyan)),
+              const SizedBox(width: 10),
+              Expanded(
+                  child: _TrafficStatBox(
+                      title: 'DATA OUT (TX)',
+                      total: '${net.dataOutGb.toStringAsFixed(2)} GB',
+                      rate: _formatThroughput(live?.upMbps ?? net.liveUpMbps),
+                      icon: Icons.arrow_upward_rounded,
+                      color: AppPalette.violet)),
+            ]),
+          ),
           const SizedBox(height: 15),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -1643,12 +1696,19 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
             ],
           ),
           const SizedBox(height: 10),
-          SizedBox(
-            height: 132,
-            width: double.infinity,
-            child: CustomPaint(
-                painter: NetworkAreaChartPainter(
-                    inbound: net.rxSeriesMbps, outbound: net.txSeriesMbps)),
+          // RepaintBoundary isolates the animated chart's GPU layer from the rest of the screen
+          RepaintBoundary(
+            child: SizedBox(
+              height: 132,
+              width: double.infinity,
+              child: ValueListenableBuilder<LiveNetSample?>(
+                valueListenable: _liveNet,
+                builder: (_, live, __) => CustomPaint(
+                    painter: NetworkAreaChartPainter(
+                        inbound: live?.rxSeries ?? net.rxSeriesMbps,
+                        outbound: live?.txSeries ?? net.txSeriesMbps)),
+              ),
+            ),
           ),
           const SizedBox(height: 10),
           Row(
@@ -1678,17 +1738,19 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
         children: [
           const SizedBox(height: 14),
           Row(children: [
-            SizedBox(
-              width: 110,
-              height: 110,
-              child: CustomPaint(
-                painter: BatteryArcGaugePainter(percentage: bat.percentage),
-                child: Center(
-                  child: Column(mainAxisSize: MainAxisSize.min, children: [
-                    Text('${bat.percentage}%', style: AppStyles.metricLg),
-                    Text(bat.isCharging ? 'Charging' : 'Discharging',
-                        style: AppStyles.caption),
-                  ]),
+            RepaintBoundary(
+              child: SizedBox(
+                width: 110,
+                height: 110,
+                child: CustomPaint(
+                  painter: BatteryArcGaugePainter(percentage: bat.percentage),
+                  child: Center(
+                    child: Column(mainAxisSize: MainAxisSize.min, children: [
+                      Text('${bat.percentage}%', style: AppStyles.metricLg),
+                      Text(bat.isCharging ? 'Charging' : 'Discharging',
+                          style: AppStyles.caption),
+                    ]),
+                  ),
                 ),
               ),
             ),

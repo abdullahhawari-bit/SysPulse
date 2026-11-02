@@ -26,8 +26,12 @@ import android.provider.CallLog
 import android.provider.Settings
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
+import io.flutter.plugin.common.EventChannel
 import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
+import android.content.ContentValues
+import android.database.sqlite.SQLiteDatabase
+import android.database.sqlite.SQLiteOpenHelper
 import android.os.Environment
 import androidx.core.content.FileProvider
 import java.io.BufferedInputStream
@@ -49,12 +53,33 @@ class MainActivity : FlutterActivity() {
 
     companion object {
         private const val CHANNEL_NAME = "com.syspulse.mobile/telemetry"
+        private const val NETWORK_STREAM_CHANNEL = "com.syspulse.mobile/network_stream"
+        private const val NETWORK_STREAM_INTERVAL_MS = 1500L
         private const val REQ_RUNTIME_PERMS = 4021
     }
 
     private val ioExecutor = Executors.newFixedThreadPool(2)
     private val mainHandler = Handler(Looper.getMainLooper())
     private var pendingPermissionResult: MethodChannel.Result? = null
+
+    // Live network push stream (EventChannel): active ONLY while Flutter is listening
+    private var netStreamSink: EventChannel.EventSink? = null
+    private val netStreamTick = object : Runnable {
+        override fun run() {
+            if (netStreamSink == null) return
+            try {
+                ioExecutor.execute {
+                    try {
+                        val payload = buildLiveNetworkPayload()
+                        mainHandler.post { netStreamSink?.success(payload) }
+                    } catch (_: Exception) {
+                    }
+                }
+            } catch (_: Exception) {
+            }
+            mainHandler.postDelayed(this, NETWORK_STREAM_INTERVAL_MS)
+        }
+    }
 
     // Rolling throughput state for live Mbps calculation
     private var lastNetSampleMs: Long = 0L
@@ -65,6 +90,20 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+
+        EventChannel(flutterEngine.dartExecutor.binaryMessenger, NETWORK_STREAM_CHANNEL)
+            .setStreamHandler(object : EventChannel.StreamHandler {
+                override fun onListen(arguments: Any?, events: EventChannel.EventSink?) {
+                    netStreamSink = events
+                    mainHandler.removeCallbacks(netStreamTick)
+                    mainHandler.post(netStreamTick)
+                }
+
+                override fun onCancel(arguments: Any?) {
+                    mainHandler.removeCallbacks(netStreamTick)
+                    netStreamSink = null
+                }
+            })
 
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, CHANNEL_NAME)
             .setMethodCallHandler { call, result ->
@@ -143,7 +182,22 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    private fun buildLiveNetworkPayload(): Map<String, Any> {
+        val (down, up) = sampleLiveThroughputMbps()
+        // Same monitor as the @Synchronized sampler, so the history lists are read consistently
+        return synchronized(this) {
+            mapOf<String, Any>(
+                "liveDownMbps" to down,
+                "liveUpMbps" to up,
+                "rxSeriesMbps" to rxHistoryMbps.toList(),
+                "txSeriesMbps" to txHistoryMbps.toList()
+            )
+        }
+    }
+
     override fun onDestroy() {
+        mainHandler.removeCallbacks(netStreamTick)
+        netStreamSink = null
         ioExecutor.shutdownNow()
         super.onDestroy()
     }
@@ -884,6 +938,7 @@ class MainActivity : FlutterActivity() {
     // ========================================================================
 
     private fun scanStorageVault(staleDays: Int): Map<String, Any> {
+        val scanStartMs = System.currentTimeMillis()
         val allFiles = mutableListOf<MutableMap<String, Any>>()
         val sizeGroupMap = mutableMapOf<Long, MutableList<MutableMap<String, Any>>>()
         val now = System.currentTimeMillis()
@@ -1010,13 +1065,33 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // Hash cache: skip re-hashing files whose size + lastModified did not change
+        val cacheDb = VaultCacheDb(applicationContext)
+        val cached: Map<String, CachedHash> = try {
+            cacheDb.loadAll()
+        } catch (_: Exception) {
+            emptyMap()
+        }
+        val freshEntries = mutableListOf<CachedHash>()
+        var cacheHits = 0
+
         val duplicateGroups = mutableListOf<List<Map<String, Any>>>()
         for ((_, group) in sizeGroupMap) {
             if (group.size > 1) {
                 val hashMap = mutableMapOf<String, MutableList<MutableMap<String, Any>>>()
                 for (item in group) {
                     val path = item["path"] as String
-                    val hash = computeFastSampleHash(File(path))
+                    val size = (item["sizeBytes"] as Long)
+                    val mtime = (item["lastModified"] as Long)
+                    val c = cached[path]
+                    val hash: String? = if (c != null && c.size == size && c.mtime == mtime) {
+                        cacheHits++
+                        c.hash
+                    } else {
+                        computeFastSampleHash(File(path))?.also {
+                            freshEntries.add(CachedHash(path, size, mtime, it))
+                        }
+                    }
                     if (hash != null) {
                         item["hash"] = hash
                         hashMap.getOrPut(hash) { mutableListOf() }.add(item)
@@ -1035,6 +1110,14 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        try {
+            val existingPaths = HashSet<String>(allFiles.size)
+            for (f in allFiles) existingPaths.add(f["path"] as String)
+            cacheDb.saveAndPrune(freshEntries, cached.keys, existingPaths)
+        } catch (_: Exception) {
+        }
+        cacheDb.close()
+
         val statFs = android.os.StatFs(Environment.getExternalStorageDirectory().path)
         val totalBytes = statFs.totalBytes
         val freeBytes = statFs.availableBytes
@@ -1046,7 +1129,10 @@ class MainActivity : FlutterActivity() {
             "usedBytes" to usedBytes,
             "freeBytes" to freeBytes,
             "files" to allFiles,
-            "duplicateGroups" to duplicateGroups
+            "duplicateGroups" to duplicateGroups,
+            "cacheHits" to cacheHits,
+            "cacheMisses" to freshEntries.size,
+            "scanMillis" to (System.currentTimeMillis() - scanStartMs)
         )
     }
 
@@ -1263,6 +1349,74 @@ class MainActivity : FlutterActivity() {
             true
         } catch (_: Exception) {
             false
+        }
+    }
+}
+
+// ============================================================================
+// VAULT HASH CACHE (native SQLite, zero external dependencies)
+// Remembers (path, size, lastModified, sample-hash) so unchanged files are not re-hashed.
+// ============================================================================
+
+internal data class CachedHash(
+    val path: String,
+    val size: Long,
+    val mtime: Long,
+    val hash: String
+)
+
+internal class VaultCacheDb(context: Context) :
+    SQLiteOpenHelper(context, "vault_cache.db", null, 1) {
+
+    override fun onCreate(db: SQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS file_hash (" +
+                "path TEXT PRIMARY KEY, size INTEGER NOT NULL, " +
+                "mtime INTEGER NOT NULL, hash TEXT NOT NULL)"
+        )
+    }
+
+    override fun onUpgrade(db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {
+        db.execSQL("DROP TABLE IF EXISTS file_hash")
+        onCreate(db)
+    }
+
+    fun loadAll(): Map<String, CachedHash> {
+        val out = HashMap<String, CachedHash>()
+        readableDatabase.rawQuery("SELECT path, size, mtime, hash FROM file_hash", null).use { c ->
+            while (c.moveToNext()) {
+                val p = c.getString(0)
+                out[p] = CachedHash(p, c.getLong(1), c.getLong(2), c.getString(3))
+            }
+        }
+        return out
+    }
+
+    fun saveAndPrune(
+        fresh: List<CachedHash>,
+        previousPaths: Set<String>,
+        existingPaths: Set<String>
+    ) {
+        val db = writableDatabase
+        db.beginTransaction()
+        try {
+            for (e in fresh) {
+                val cv = ContentValues().apply {
+                    put("path", e.path)
+                    put("size", e.size)
+                    put("mtime", e.mtime)
+                    put("hash", e.hash)
+                }
+                db.insertWithOnConflict("file_hash", null, cv, SQLiteDatabase.CONFLICT_REPLACE)
+            }
+            for (p in previousPaths) {
+                if (!existingPaths.contains(p)) {
+                    db.delete("file_hash", "path = ?", arrayOf(p))
+                }
+            }
+            db.setTransactionSuccessful()
+        } finally {
+            db.endTransaction()
         }
     }
 }

@@ -681,6 +681,15 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
               valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF38BDF8)),
             ),
           ),
+          if (s.scanMillis > 0) ...[
+            const SizedBox(height: 4),
+            Text(
+              'Scan: ${(s.scanMillis / 1000).toStringAsFixed(2)}s  •  Cache hits: ${s.cacheHits}  •  New hashes: ${s.cacheMisses}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 9.5, color: Color(0xFF64748B)),
+            ),
+          ],
           const SizedBox(height: 8),
 
           // Section Title & Select All Row
