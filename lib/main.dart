@@ -2432,8 +2432,9 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
           text: unresolved == 0 ? 'OPTIMAL' : '$unresolved ISSUES',
           color: badgeColor),
       child: Column(
-        children: alerts.map((alert) {
-          final isBusy = _busyAlertId == alert.id;
+        children: [
+          ...alerts.map((alert) {
+            final isBusy = _busyAlertId == alert.id;
           final c = alert.isResolved ? AppPalette.emerald : alert.color;
           return Container(
             margin: const EdgeInsets.only(top: 10),
@@ -2661,6 +2662,7 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
               ],
             ),
           ),
+        ],
       ),
     );
   }
