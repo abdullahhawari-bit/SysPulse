@@ -1,5 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import '../services/local_web_server_service.dart';
 import '../services/storage_vault_service.dart';
 
 // ============================================================================
@@ -383,6 +385,15 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
     );
   }
 
+  void _showWifiPcTransferModal() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => const _WifiPcTransferSheet(),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -410,6 +421,11 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Wi-Fi PC Transfer',
+            icon: const Icon(Icons.wifi_tethering_rounded, color: Color(0xFF10B981), size: 22),
+            onPressed: _showWifiPcTransferModal,
+          ),
           IconButton(
             tooltip: 'Rescan Storage',
             icon: const Icon(Icons.refresh_rounded, color: Color(0xFF38BDF8), size: 22),
@@ -1339,11 +1355,12 @@ class _CloudArchiverModal extends StatefulWidget {
 
 class _CloudArchiverModalState extends State<_CloudArchiverModal> {
   final StorageVaultService _service = StorageVaultService.instance;
-  CloudProvider _selectedProvider = CloudProvider.googleDrive;
+  CloudProvider _selectedProvider = CloudProvider.localWifiPc;
   bool _compressing = false;
   bool _exporting = false;
   ArchiveCompressionResult? _archiveResult;
   bool _readyToFreeSpace = false;
+  String? _wifiUrl;
 
   Future<void> _startProcess() async {
     setState(() => _compressing = true);
@@ -1357,16 +1374,31 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
       _exporting = true;
     });
 
-    final ok = await _service.exportToCloud(res.archivePath, _selectedProvider);
-    if (!mounted) return;
+    if (_selectedProvider == CloudProvider.localWifiPc) {
+      final ok = await LocalWebServerService.instance.startServer(
+        fileToShare: File(res.archivePath),
+      );
+      if (!mounted) return;
+      setState(() {
+        _exporting = false;
+        if (ok) {
+          _wifiUrl = LocalWebServerService.instance.currentStatus.url;
+          _readyToFreeSpace = true;
+        }
+      });
+    } else {
+      final ok = await _service.exportToCloud(res.archivePath, _selectedProvider);
+      if (!mounted) return;
 
-    setState(() {
-      _exporting = false;
-      if (ok) _readyToFreeSpace = true;
-    });
+      setState(() {
+        _exporting = false;
+        if (ok) _readyToFreeSpace = true;
+      });
+    }
   }
 
   Future<void> _freeUpSpace() async {
+    await LocalWebServerService.instance.stopServer();
     await _service.deleteArchivedFiles(widget.selectedFiles);
     if (!mounted) return;
     widget.onArchivedAndDeleted();
@@ -1423,40 +1455,126 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
                   const CircularProgressIndicator(color: Color(0xFFA855F7)),
                   SizedBox(height: 14),
                   Text(
-                    'Exporting to ${_selectedProvider.displayName}...',
+                    'Preparing ${_selectedProvider.displayName}...',
                     style: const TextStyle(fontSize: 13, color: Color(0xFFBAE6FD)),
                   ),
                 ],
               ),
             ),
           ] else if (_readyToFreeSpace) ...[
-            Container(
-              padding: const EdgeInsets.all(14),
-              decoration: BoxDecoration(
-                color: const Color(0xFF10B981).withOpacity(0.12),
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(color: const Color(0xFF10B981).withOpacity(0.5)),
-              ),
-              child: Column(
-                children: [
-                  const Icon(Icons.cloud_done_rounded, size: 38, color: Color(0xFF10B981)),
-                  const SizedBox(height: 8),
-                  const Text(
-                    'Archived to Cloud Successfully! 🎉',
-                    style: TextStyle(
-                      fontSize: 15,
-                      fontWeight: FontWeight.w800,
-                      color: Colors.white,
+            if (_selectedProvider == CloudProvider.localWifiPc) ...[
+              Container(
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.5)),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.wifi_tethering_rounded, size: 36, color: Color(0xFF10B981)),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Wi-Fi PC Server Active! 🚀',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    'Saved ${_archiveResult?.spaceSavedFormatted ?? ''} with ${((_archiveResult?.spaceSavedRatio ?? 0) * 100).toInt()}% compression',
-                    style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
-                  ),
-                ],
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Open this link in your computer browser (Same Wi-Fi):',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 11.5, color: Color(0xFF94A3B8)),
+                    ),
+                    const SizedBox(height: 10),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF0F172A),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: const Color(0xFF38BDF8).withOpacity(0.6)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          SelectableText(
+                            _wifiUrl ?? 'http://192.168.1.x:8080',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: Color(0xFF38BDF8),
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          IconButton(
+                            icon: const Icon(Icons.copy_rounded, size: 16, color: Color(0xFF38BDF8)),
+                            tooltip: 'Copy Link',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
+                            onPressed: () {
+                              if (_wifiUrl != null) {
+                                Clipboard.setData(ClipboardData(text: _wifiUrl!));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Server URL copied to clipboard!'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    StreamBuilder<LocalServerStatus>(
+                      stream: LocalWebServerService.instance.statusStream,
+                      initialData: LocalWebServerService.instance.currentStatus,
+                      builder: (context, snap) {
+                        final status = snap.data;
+                        final sentMb = ((status?.totalBytesSent ?? 0) / (1024 * 1024)).toStringAsFixed(1);
+                        return Text(
+                          'Direct Stream: $sentMb MB transferred to PC • 0 Internet Used',
+                          style: const TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: Color(0xFF10B981)),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
-            ),
+            ] else ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: const Color(0xFF10B981).withOpacity(0.12),
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(color: const Color(0xFF10B981).withOpacity(0.5)),
+                ),
+                child: Column(
+                  children: [
+                    const Icon(Icons.cloud_done_rounded, size: 38, color: Color(0xFF10B981)),
+                    const SizedBox(height: 8),
+                    const Text(
+                      'Archived to Cloud Successfully! 🎉',
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                        color: Colors.white,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Saved ${_archiveResult?.spaceSavedFormatted ?? ''} with ${((_archiveResult?.spaceSavedRatio ?? 0) * 100).toInt()}% compression',
+                      style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: _freeUpSpace,
@@ -1473,15 +1591,18 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
             ),
             const SizedBox(height: 6),
             TextButton(
-              onPressed: () => Navigator.pop(context),
+              onPressed: () async {
+                await LocalWebServerService.instance.stopServer();
+                if (mounted) Navigator.pop(context);
+              },
               child: const Text(
-                'Keep Originals on Phone',
+                'Keep Originals on Phone & Close',
                 style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
               ),
             ),
           ] else ...[
             const Text(
-              'Select Cloud Destination:',
+              'Select Archive & Transfer Mode:',
               style: TextStyle(fontSize: 12, color: Color(0xFF94A3B8)),
             ),
             const SizedBox(height: 10),
@@ -1530,13 +1651,256 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
               ),
               icon: const Icon(Icons.archive_rounded, size: 18),
               label: const Text(
-                'Compress & Offload to Cloud',
+                'Compress & Start Transfer',
                 style: TextStyle(fontSize: 13, fontWeight: FontWeight.w800),
               ),
             ),
           ],
         ],
       ),
+    );
+  }
+}
+
+// ============================================================================
+// STANDALONE WI-FI PC TRANSFER SHEET (P2P LOCAL SERVER)
+// ============================================================================
+
+class _WifiPcTransferSheet extends StatefulWidget {
+  const _WifiPcTransferSheet();
+
+  @override
+  State<_WifiPcTransferSheet> createState() => _WifiPcTransferSheetState();
+}
+
+class _WifiPcTransferSheetState extends State<_WifiPcTransferSheet> {
+  final _server = LocalWebServerService.instance;
+  bool _starting = false;
+
+  @override
+  Widget build(BuildContext context) {
+    return StreamBuilder<LocalServerStatus>(
+      stream: _server.statusStream,
+      initialData: _server.currentStatus,
+      builder: (context, snap) {
+        final status = snap.data ?? _server.currentStatus;
+        final isRunning = status.isRunning;
+
+        return Container(
+          padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+          decoration: const BoxDecoration(
+            color: Color(0xFF0F172A),
+            borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: (isRunning ? const Color(0xFF10B981) : const Color(0xFF38BDF8)).withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        child: Icon(
+                          Icons.wifi_tethering_rounded,
+                          color: isRunning ? const Color(0xFF10B981) : const Color(0xFF38BDF8),
+                          size: 22,
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Wi-Fi PC Direct Transfer',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w800,
+                              color: Colors.white,
+                            ),
+                          ),
+                          Text(
+                            isRunning ? 'Server Active • Ready for PC' : 'Local P2P Web Server (0 Data)',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: isRunning ? const Color(0xFF10B981) : const Color(0xFF94A3B8),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close_rounded, color: Color(0xFF94A3B8), size: 20),
+                    onPressed: () => Navigator.pop(context),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              if (!isRunning) ...[
+                Container(
+                  padding: const EdgeInsets.all(14),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF1E293B),
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(color: const Color(0xFF334155)),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'How it works:',
+                        style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: Color(0xFF38BDF8)),
+                      ),
+                      SizedBox(height: 6),
+                      Text(
+                        '1. Tap "Start PC Server" below.\n2. Open Chrome or Edge on your computer (on the same Wi-Fi).\n3. Enter the local IP address to download phone files at up to 100 MB/s without internet.',
+                        style: TextStyle(fontSize: 11.5, color: Color(0xFFCBD5E1), height: 1.4),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 18),
+                ElevatedButton.icon(
+                  onPressed: _starting
+                      ? null
+                      : () async {
+                          setState(() => _starting = true);
+                          await _server.startServer();
+                          if (mounted) setState(() => _starting = false);
+                        },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF10B981),
+                    foregroundColor: const Color(0xFF020617),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  icon: _starting
+                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      : const Icon(Icons.play_arrow_rounded, size: 20),
+                  label: const Text(
+                    'Start PC Transfer Server',
+                    style: TextStyle(fontSize: 14, fontWeight: FontWeight.w800),
+                  ),
+                ),
+              ] else ...[
+                Container(
+                  padding: const EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFF10B981).withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: const Color(0xFF10B981).withOpacity(0.5)),
+                  ),
+                  child: Column(
+                    children: [
+                      const Text(
+                        'Enter this URL into your computer browser:',
+                        style: TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
+                      ),
+                      const SizedBox(height: 10),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF030712),
+                          borderRadius: BorderRadius.circular(10),
+                          border: Border.all(color: const Color(0xFF38BDF8)),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            SelectableText(
+                              status.url,
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w800,
+                                color: Color(0xFF38BDF8),
+                                letterSpacing: 0.5,
+                              ),
+                            ),
+                            const SizedBox(width: 10),
+                            IconButton(
+                              icon: const Icon(Icons.copy_rounded, size: 18, color: Color(0xFF38BDF8)),
+                              tooltip: 'Copy URL',
+                              onPressed: () {
+                                Clipboard.setData(ClipboardData(text: status.url));
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(
+                                    content: Text('Address copied to clipboard!'),
+                                    duration: Duration(seconds: 2),
+                                  ),
+                                );
+                              },
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceAround,
+                        children: [
+                          Column(
+                            children: [
+                              const Text('Transferred', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
+                              Text(
+                                '${(status.totalBytesSent / (1024 * 1024)).toStringAsFixed(1)} MB',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                              ),
+                            ],
+                          ),
+                          Column(
+                            children: [
+                              const Text('Connections', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
+                              Text(
+                                '${status.activeConnections}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Color(0xFF10B981)),
+                              ),
+                            ],
+                          ),
+                          Column(
+                            children: [
+                              const Text('Port', style: TextStyle(fontSize: 10.5, color: Color(0xFF94A3B8))),
+                              Text(
+                                '${status.port}',
+                                style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.white),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton.icon(
+                  onPressed: () async {
+                    await _server.stopServer();
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFFEF4444).withOpacity(0.2),
+                    foregroundColor: const Color(0xFFEF4444),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      side: const BorderSide(color: Color(0xFFEF4444)),
+                    ),
+                  ),
+                  icon: const Icon(Icons.stop_rounded, size: 20),
+                  label: const Text(
+                    'Stop Transfer Server',
+                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }

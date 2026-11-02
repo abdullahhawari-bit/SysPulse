@@ -163,6 +163,7 @@ class OptimizationAlert {
   final String estimatedImpact;
   final String nativeMethod;
   final List<String> targetPackages;
+  final List<Map<String, String>> targetApps;
   final AlertSeverity severity;
   final bool isResolved;
 
@@ -174,6 +175,7 @@ class OptimizationAlert {
     required this.estimatedImpact,
     required this.nativeMethod,
     this.targetPackages = const [],
+    this.targetApps = const [],
     this.severity = AlertSeverity.warning,
     this.isResolved = false,
   });
@@ -186,9 +188,42 @@ class OptimizationAlert {
         estimatedImpact: estimatedImpact,
         nativeMethod: nativeMethod,
         targetPackages: targetPackages,
+        targetApps: targetApps,
         severity: severity,
         isResolved: isResolved ?? this.isResolved,
       );
+
+  List<Map<String, String>> get effectiveTargetApps {
+    if (targetApps.isNotEmpty) return targetApps;
+    if (targetPackages.isNotEmpty) {
+      return targetPackages.map((pkg) => {
+        'package': pkg,
+        'name': _formatPackageToHumanName(pkg),
+      }).toList();
+    }
+    return const [];
+  }
+
+  static String _formatPackageToHumanName(String pkg) {
+    if (pkg.contains('musically') || pkg.contains('tiktok')) return 'TikTok';
+    if (pkg.contains('instagram')) return 'Instagram';
+    if (pkg.contains('chrome')) return 'Google Chrome';
+    if (pkg.contains('whatsapp')) return 'WhatsApp';
+    if (pkg.contains('telegram')) return 'Telegram';
+    if (pkg.contains('youtube')) return 'YouTube';
+    if (pkg.contains('twitter') || pkg.contains('com.twitter')) return 'X / Twitter';
+    if (pkg.contains('snapchat')) return 'Snapchat';
+    if (pkg.contains('facebook')) return 'Facebook';
+    if (pkg.contains('spotify')) return 'Spotify';
+    final parts = pkg.split('.');
+    if (parts.isNotEmpty) {
+      final last = parts.last;
+      if (last.isNotEmpty) {
+        return last[0].toUpperCase() + last.substring(1);
+      }
+    }
+    return pkg;
+  }
 
   Color get color {
     switch (severity) {
@@ -516,6 +551,14 @@ class SysPulseNativeBridge {
           final pkgs = (m['targetPackages'] as List<dynamic>? ?? const [])
               .map((e) => e.toString())
               .toList();
+          final rawApps = (m['targetApps'] as List<dynamic>? ?? const []);
+          final apps = rawApps.map((e) {
+            final appMap = Map<String, dynamic>.from(e as Map);
+            return {
+              'package': (appMap['package'] ?? '').toString(),
+              'name': (appMap['name'] ?? '').toString(),
+            };
+          }).toList();
           return OptimizationAlert(
             id: (m['id'] as String?) ?? 'opt',
             title: (m['title'] as String?) ?? 'System Optimization',
@@ -525,6 +568,7 @@ class SysPulseNativeBridge {
             nativeMethod:
                 (m['nativeMethod'] as String?) ?? 'killBackgroundProcesses',
             targetPackages: pkgs,
+            targetApps: apps,
             severity: sev,
           );
         }).toList();
@@ -544,6 +588,11 @@ class SysPulseNativeBridge {
           'com.zhiliaoapp.musically',
           'com.instagram.android',
           'com.facebook.katana',
+        ],
+        targetApps: [
+          {'name': 'TikTok', 'package': 'com.zhiliaoapp.musically'},
+          {'name': 'Instagram', 'package': 'com.instagram.android'},
+          {'name': 'Facebook', 'package': 'com.facebook.katana'},
         ],
         severity: AlertSeverity.critical,
       ),
@@ -1001,9 +1050,15 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
           calls: cur.calls,
         );
       });
+      final appCount = alert.effectiveTargetApps.length;
+      final msg = alert.id == 'kill_bg' && appCount > 0
+          ? 'Terminated background processes for $appCount application(s).'
+          : 'Optimized: ${alert.title} (${alert.estimatedImpact})';
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('Optimized: ${alert.title} (${alert.estimatedImpact})'),
-        duration: const Duration(seconds: 2),
+        content: Text(msg),
+        backgroundColor: AppPalette.emerald,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 3),
       ));
     } else {
       setState(() => _busyAlertId = null);
@@ -1407,70 +1462,146 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: c.alphaPct(0.32)),
             ),
-            child: Row(
+            child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                      color: c.alphaPct(0.15),
-                      borderRadius: BorderRadius.circular(9)),
-                  child: Icon(alert.isResolved ? Icons.check_rounded : alert.icon,
-                      size: 18, color: c),
-                ),
-                const SizedBox(width: 11),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(alert.title,
-                          maxLines: 2,
-                          style: AppStyles.itemTitle.copyWith(
-                              fontSize: 13,
-                              color: alert.isResolved
-                                  ? AppPalette.textSecondary
-                                  : AppPalette.textPrimary,
-                              decoration: alert.isResolved
-                                  ? TextDecoration.lineThrough
-                                  : null)),
-                      const SizedBox(height: 3),
-                      Text(alert.description,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppStyles.cardSub.copyWith(fontSize: 11)),
-                      const SizedBox(height: 5),
-                      Text(alert.estimatedImpact,
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: c)),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 8),
-                SizedBox(
-                  height: 34,
-                  child: FilledButton.tonal(
-                    onPressed: alert.isResolved || isBusy
-                        ? null
-                        : () => _applyOptimization(alert),
-                    style: FilledButton.styleFrom(
-                      backgroundColor: c.alphaPct(0.18),
-                      foregroundColor: c,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
-                      shape: RoundedRectangleBorder(
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                          color: c.alphaPct(0.15),
                           borderRadius: BorderRadius.circular(9)),
+                      child: Icon(alert.isResolved ? Icons.check_rounded : alert.icon,
+                          size: 18, color: c),
                     ),
-                    child: isBusy
-                        ? const SizedBox(
-                            width: 14,
-                            height: 14,
-                            child: CircularProgressIndicator(strokeWidth: 2))
-                        : Text(alert.isResolved ? 'Done' : alert.actionLabel,
-                            style: const TextStyle(
-                                fontSize: 11.5, fontWeight: FontWeight.w700)),
-                  ),
+                    const SizedBox(width: 11),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(alert.title,
+                              maxLines: 2,
+                              style: AppStyles.itemTitle.copyWith(
+                                  fontSize: 13,
+                                  color: alert.isResolved
+                                      ? AppPalette.textSecondary
+                                      : AppPalette.textPrimary,
+                                  decoration: alert.isResolved
+                                      ? TextDecoration.lineThrough
+                                      : null)),
+                          const SizedBox(height: 3),
+                          Text(alert.description,
+                              maxLines: 4,
+                              overflow: TextOverflow.ellipsis,
+                              style: AppStyles.cardSub.copyWith(fontSize: 11)),
+                          const SizedBox(height: 5),
+                          Text(alert.estimatedImpact,
+                              style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: c)),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      height: 34,
+                      child: FilledButton.tonal(
+                        onPressed: alert.isResolved || isBusy
+                            ? null
+                            : () => _applyOptimization(alert),
+                        style: FilledButton.styleFrom(
+                          backgroundColor: c.alphaPct(0.18),
+                          foregroundColor: c,
+                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                          shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(9)),
+                        ),
+                        child: isBusy
+                            ? const SizedBox(
+                                width: 14,
+                                height: 14,
+                                child: CircularProgressIndicator(strokeWidth: 2))
+                            : Text(alert.isResolved ? 'Done' : alert.actionLabel,
+                                style: const TextStyle(
+                                    fontSize: 11.5, fontWeight: FontWeight.w700)),
+                      ),
+                    ),
+                  ],
                 ),
+                if (alert.effectiveTargetApps.isNotEmpty && !alert.isResolved) ...[
+                  const SizedBox(height: 10),
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                    decoration: BoxDecoration(
+                      color: AppPalette.bg.alphaPct(0.65),
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: AppPalette.border.alphaPct(0.4)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            Icon(Icons.layers_clear_rounded, size: 12, color: c),
+                            const SizedBox(width: 5),
+                            Text(
+                              'Target Applications (${alert.effectiveTargetApps.length}):',
+                              style: const TextStyle(
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                                color: AppPalette.textSecondary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 6),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: alert.effectiveTargetApps.map((app) {
+                            final name = (app['name'] != null && app['name']!.isNotEmpty)
+                                ? app['name']!
+                                : (app['package'] ?? 'App');
+                            return Tooltip(
+                              message: app['package'] ?? '',
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                                decoration: BoxDecoration(
+                                  color: AppPalette.cardAlt,
+                                  borderRadius: BorderRadius.circular(6),
+                                  border: Border.all(color: c.alphaPct(0.35)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(Icons.apps_rounded, size: 11, color: c),
+                                    const SizedBox(width: 4),
+                                    ConstrainedBox(
+                                      constraints: const BoxConstraints(maxWidth: 130),
+                                      child: Text(
+                                        name,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          fontSize: 10.5,
+                                          fontWeight: FontWeight.w500,
+                                          color: AppPalette.textPrimary,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ],
             ),
           );

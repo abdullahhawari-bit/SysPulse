@@ -322,7 +322,10 @@ class MainActivity : FlutterActivity() {
         val usedRatio = (usedMb.toDouble() / totalMb.toDouble()).coerceIn(0.0, 1.0)
         val usedPct = (usedRatio * 100).roundToInt()
 
-        val bgCandidates = findBackgroundCandidatePackages(limit = 5)
+        val bgCandidates = findBackgroundCandidatePackages(limit = 8)
+        val bgTargetApps = bgCandidates.map { pkg ->
+            mapOf<String, Any>("package" to pkg, "name" to resolveAppLabel(pkg))
+        }
         val estReclaimMb = max(180L, (memInfo.availMem / (1024 * 1024)) / 6)
 
         alerts.add(
@@ -334,6 +337,7 @@ class MainActivity : FlutterActivity() {
                 "estimatedImpact" to "+35m Battery • ~$estReclaimMb MB RAM",
                 "nativeMethod" to "killBackgroundProcesses",
                 "targetPackages" to bgCandidates,
+                "targetApps" to bgTargetApps,
                 "severity" to if (usedPct >= 80 || memInfo.lowMemory) "critical" else "warning"
             )
         )
@@ -370,9 +374,23 @@ class MainActivity : FlutterActivity() {
         return alerts
     }
 
+    private fun resolveAppLabel(pkg: String): String {
+        return try {
+            val info = packageManager.getApplicationInfo(pkg, 0)
+            packageManager.getApplicationLabel(info).toString()
+        } catch (_: Exception) {
+            pkg
+        }
+    }
+
     private fun killBackgroundApps(explicitPackages: List<String>): Boolean {
         val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
-        val targets = (explicitPackages + findBackgroundCandidatePackages(limit = 12)).toSet()
+        // Kill exactly what the user saw in the list; fall back to auto-detection only if empty
+        val targets = if (explicitPackages.isNotEmpty()) {
+            explicitPackages.toSet()
+        } else {
+            findBackgroundCandidatePackages(limit = 8).toSet()
+        }
         for (pkg in targets) {
             if (pkg != packageName && !pkg.startsWith("com.android.systemui")) {
                 try {
@@ -401,6 +419,19 @@ class MainActivity : FlutterActivity() {
                     }
                     if (result.size >= limit) return result.toList()
                 }
+        }
+        if (result.size < limit) {
+            try {
+                val installed = packageManager.getInstalledPackages(0)
+                for (p in installed) {
+                    val appInfo = p.applicationInfo
+                    val isSystem = appInfo != null && (appInfo.flags and ApplicationInfo.FLAG_SYSTEM) != 0
+                    if (!isSystem && p.packageName != packageName && !isCoreSystemPackage(p.packageName)) {
+                        result.add(p.packageName)
+                        if (result.size >= limit) break
+                    }
+                }
+            } catch (_: Exception) {}
         }
         return result.toList()
     }

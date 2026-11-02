@@ -73,12 +73,15 @@ enum VaultFileCategory {
 }
 
 enum CloudProvider {
+  localWifiPc,
   googleDrive,
   oneDrive,
   systemShare;
 
   String get displayName {
     switch (this) {
+      case CloudProvider.localWifiPc:
+        return 'Wi-Fi PC Direct Transfer (0 Internet Data)';
       case CloudProvider.googleDrive:
         return 'Google Drive';
       case CloudProvider.oneDrive:
@@ -90,6 +93,8 @@ enum CloudProvider {
 
   String get nativeIdentifier {
     switch (this) {
+      case CloudProvider.localWifiPc:
+        return 'local_wifi';
       case CloudProvider.googleDrive:
         return 'google_drive';
       case CloudProvider.oneDrive:
@@ -101,6 +106,8 @@ enum CloudProvider {
 
   IconData get icon {
     switch (this) {
+      case CloudProvider.localWifiPc:
+        return Icons.wifi_tethering_rounded;
       case CloudProvider.googleDrive:
         return Icons.add_to_drive_rounded;
       case CloudProvider.oneDrive:
