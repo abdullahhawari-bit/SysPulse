@@ -768,6 +768,58 @@ class _StorageVaultScreenState extends State<StorageVaultScreen> {
           // Interactive Sub-filter Chips for Social Media & Screenshots
           if (_activeTab == 'social') ...[
             const SizedBox(height: 7),
+            Container(
+              margin: const EdgeInsets.only(bottom: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              decoration: BoxDecoration(
+                color: const Color(0xFF10B981).withOpacity(0.12),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: const Color(0xFF10B981).withOpacity(0.35)),
+              ),
+              child: Row(
+                children: [
+                  const Icon(Icons.auto_awesome_rounded, size: 14, color: Color(0xFF10B981)),
+                  const SizedBox(width: 6),
+                  const Expanded(
+                    child: Text(
+                      'AI Media Triage: Separate junk (voice notes, sent copies, status cache) from personal photos.',
+                      style: TextStyle(fontSize: 10.5, color: Color(0xFFCBD5E1)),
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  InkWell(
+                    onTap: () {
+                      setState(() {
+                        _selectedFileIds.clear();
+                        for (final f in s.socialMediaFiles) {
+                          if (f.socialType == 'sent' || f.socialType == 'status' || f.socialType == 'voice_note') {
+                            _selectedFileIds.add(f.id);
+                          }
+                        }
+                      });
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text('Selected WhatsApp Junk only. Personal photos preserved!'),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    },
+                    borderRadius: BorderRadius.circular(6),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF10B981),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text(
+                        'Triage Junk',
+                        style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Color(0xFF020617)),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
             SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -1571,6 +1623,20 @@ class _CloudArchiverModalState extends State<_CloudArchiverModal> {
                       'Saved ${_archiveResult?.spaceSavedFormatted ?? ''} with ${((_archiveResult?.spaceSavedRatio ?? 0) * 100).toInt()}% compression',
                       style: const TextStyle(fontSize: 12, color: Color(0xFFCBD5E1)),
                     ),
+                    if (_archiveResult?.isMultiPart == true) ...[
+                      const SizedBox(height: 6),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF38BDF8).withOpacity(0.18),
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                        child: Text(
+                          '📦 Cloud Arbitrage: Auto-split into ${_archiveResult?.partsCount} parts for free tiers',
+                          style: const TextStyle(fontSize: 10.5, fontWeight: FontWeight.w700, color: Color(0xFF38BDF8)),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),

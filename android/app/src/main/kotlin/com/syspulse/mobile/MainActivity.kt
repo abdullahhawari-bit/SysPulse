@@ -164,6 +164,15 @@ class MainActivity : FlutterActivity() {
                         val ok = launchAppUninstaller(pkg)
                         result.success(ok)
                     }
+                    "openAppDetails" -> {
+                        val pkg = call.argument<String>("packageName") ?: ""
+                        val ok = openAppDetailsSettings(pkg)
+                        result.success(ok)
+                    }
+                    "openBatterySettings" -> {
+                        val ok = openBatteryOptimizationSettings()
+                        result.success(ok)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -472,6 +481,7 @@ class MainActivity : FlutterActivity() {
                 (foregroundMsByPkg[stat.packageName] ?: 0L) + stat.totalTimeInForeground
         }
 
+        var totalSocialMinutes = 0
         val items = foregroundMsByPkg.entries
             .filter { it.value >= 60_000L } // At least 1 minute of foreground screen time
             .sortedByDescending { it.value }
@@ -484,16 +494,31 @@ class MainActivity : FlutterActivity() {
                     pkg.substringAfterLast('.')
                 }
                 val category = resolveCategoryLabel(appInfo)
+                val mins = max(1, (fgMillis / 60_000L).toInt())
+                val isSocial = category == "Social" ||
+                        pkg.contains("tiktok") || pkg.contains("musically") ||
+                        pkg.contains("instagram") || pkg.contains("youtube") ||
+                        pkg.contains("twitter") || pkg.contains("facebook") ||
+                        pkg.contains("snapchat") || pkg.contains("reddit")
+                if (isSocial) {
+                    totalSocialMinutes += mins
+                }
                 mapOf(
                     "appName" to label,
                     "packageName" to pkg,
                     "category" to category,
-                    "minutes" to max(1, (fgMillis / 60_000L).toInt()),
-                    "launches" to max(1, launchCounts[pkg] ?: 1)
+                    "minutes" to mins,
+                    "launches" to max(1, launchCounts[pkg] ?: 1),
+                    "isSocial" to isSocial
                 )
             }
 
-        return mapOf("permissionGranted" to true, "items" to items)
+        return mapOf(
+            "permissionGranted" to true,
+            "items" to items,
+            "socialMinutes" to totalSocialMinutes,
+            "doomscrollingAlert" to (totalSocialMinutes >= 45)
+        )
     }
 
     private fun resolveCategoryLabel(appInfo: ApplicationInfo?): String {
@@ -1380,6 +1405,40 @@ class MainActivity : FlutterActivity() {
             true
         } catch (_: Exception) {
             false
+        }
+    }
+
+    private fun openAppDetailsSettings(packageNameToOpen: String): Boolean {
+        if (packageNameToOpen.isBlank()) return false
+        return try {
+            val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                data = Uri.parse("package:$packageNameToOpen")
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            mainHandler.post { startActivity(intent) }
+            true
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    private fun openBatteryOptimizationSettings(): Boolean {
+        return try {
+            val intent = Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            mainHandler.post { startActivity(intent) }
+            true
+        } catch (_: Exception) {
+            try {
+                val fallbackIntent = Intent(Settings.ACTION_BATTERY_SAVER_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                mainHandler.post { startActivity(fallbackIntent) }
+                true
+            } catch (_: Exception) {
+                false
+            }
         }
     }
 }

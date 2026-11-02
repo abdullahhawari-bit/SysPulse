@@ -408,6 +408,8 @@ class DashboardBundle {
   final BatteryTelemetry battery;
   final SecurityAuditData security;
   final CallAnalyticsData calls;
+  final int socialMinutesToday;
+  final bool doomscrollingAlert;
 
   const DashboardBundle({
     required this.permissions,
@@ -417,6 +419,8 @@ class DashboardBundle {
     required this.battery,
     required this.security,
     required this.calls,
+    this.socialMinutesToday = 0,
+    this.doomscrollingAlert = false,
   });
 
   DashboardBundle copyWith({
@@ -427,6 +431,8 @@ class DashboardBundle {
     BatteryTelemetry? battery,
     SecurityAuditData? security,
     CallAnalyticsData? calls,
+    int? socialMinutesToday,
+    bool? doomscrollingAlert,
   }) {
     return DashboardBundle(
       permissions: permissions ?? this.permissions,
@@ -436,6 +442,8 @@ class DashboardBundle {
       battery: battery ?? this.battery,
       security: security ?? this.security,
       calls: calls ?? this.calls,
+      socialMinutesToday: socialMinutesToday ?? this.socialMinutesToday,
+      doomscrollingAlert: doomscrollingAlert ?? this.doomscrollingAlert,
     );
   }
 }
@@ -477,6 +485,27 @@ class SysPulseNativeBridge {
     AppPalette.blue,
   ];
 
+  int lastSocialMinutesToday = 0;
+  bool lastDoomscrollingAlert = false;
+
+  Future<bool> openAppDetails(String packageName) async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('openAppDetails', {'packageName': packageName});
+      return ok ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<bool> openBatterySettings() async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('openBatterySettings');
+      return ok ?? true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<DashboardBundle> fetchAllTelemetry() async {
     final perms = await checkPermissionsStatus();
     final res = await Future.wait([
@@ -495,6 +524,8 @@ class SysPulseNativeBridge {
       battery: res[3] as BatteryTelemetry,
       security: res[4] as SecurityAuditData,
       calls: res[5] as CallAnalyticsData,
+      socialMinutesToday: lastSocialMinutesToday,
+      doomscrollingAlert: lastDoomscrollingAlert,
     );
   }
 
@@ -637,6 +668,8 @@ class SysPulseNativeBridge {
       final raw =
           await _channel.invokeMapMethod<String, dynamic>('getDailyAppUsage');
       if (raw != null && raw['permissionGranted'] == true) {
+        lastSocialMinutesToday = (raw['socialMinutes'] as num?)?.toInt() ?? 0;
+        lastDoomscrollingAlert = raw['doomscrollingAlert'] == true;
         final items = raw['items'] as List<dynamic>? ?? const [];
         if (items.isNotEmpty) {
           return List<AppUsageRecord>.generate(items.length, (idx) {
@@ -1080,8 +1113,146 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
         battery: _data!.battery,
         security: updated,
         calls: _data!.calls,
+        socialMinutesToday: _data!.socialMinutesToday,
+        doomscrollingAlert: _data!.doomscrollingAlert,
       );
     });
+  }
+
+  void _showDeepFreezeAppModal(Map<String, String> app) {
+    final name = app['name'] ?? 'App';
+    final pkg = app['package'] ?? '';
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) => Container(
+        padding: const EdgeInsets.fromLTRB(20, 18, 20, 24),
+        decoration: const BoxDecoration(
+          color: Color(0xFF0F172A),
+          borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppPalette.coral.withOpacity(0.18),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: const Icon(Icons.ac_unit_rounded, color: AppPalette.coral, size: 22),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('Deep Freeze: $name', style: AppStyles.cardTitle),
+                      Text(pkg, style: AppStyles.caption, overflow: TextOverflow.ellipsis),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded, color: AppPalette.textSecondary),
+                  onPressed: () => Navigator.pop(ctx),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: AppPalette.cardAlt,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: AppPalette.border),
+              ),
+              child: const Text(
+                'Honor / Android Deep Freeze:\nTo terminate background persistent services completely, open App Info and tap "Force Stop", or disable background activity in Battery Management.',
+                style: TextStyle(fontSize: 11.5, color: Color(0xFFCBD5E1), height: 1.4),
+              ),
+            ),
+            const SizedBox(height: 16),
+            ElevatedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _bridge.openAppDetails(pkg);
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppPalette.coral,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.power_settings_new_rounded, size: 18),
+              label: const Text('Open App Info (Force Stop)', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () {
+                Navigator.pop(ctx);
+                _bridge.openBatterySettings();
+              },
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppPalette.amber,
+                side: const BorderSide(color: AppPalette.amber),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              icon: const Icon(Icons.battery_charging_full_rounded, size: 18),
+              label: const Text('Honor App Launch & Battery Rules', style: TextStyle(fontWeight: FontWeight.w700)),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  void _triggerDetoxPulse() {
+    HapticFeedback.heavyImpact();
+    Future<void>.delayed(const Duration(milliseconds: 180), () {
+      HapticFeedback.vibrate();
+    });
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: const Row(
+          children: [
+            Icon(Icons.shield_moon_rounded, color: AppPalette.cyan, size: 24),
+            SizedBox(width: 8),
+            Text('Anti-Doomscrolling Pulse', style: TextStyle(color: Colors.white, fontSize: 16)),
+          ],
+        ),
+        content: const Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'Continuous feed scrolling overstimulates dopamine and strains vision.',
+              style: TextStyle(color: Color(0xFFE2E8F0), fontSize: 13, height: 1.4),
+            ),
+            SizedBox(height: 12),
+            Text(
+              '🌿 Micro-Detox Actions:\n• Look away at a 20-foot distance for 20 seconds.\n• Put down the phone for 5 minutes.\n• Hydrate and reset your focus.',
+              style: TextStyle(color: AppPalette.cyan, fontSize: 12, height: 1.5),
+            ),
+          ],
+        ),
+        actions: [
+          FilledButton.tonal(
+            onPressed: () => Navigator.pop(ctx),
+            style: FilledButton.styleFrom(backgroundColor: AppPalette.cyan.withOpacity(0.2)),
+            child: const Text('I am Reset', style: TextStyle(color: AppPalette.cyan, fontWeight: FontWeight.w700)),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -1556,6 +1727,19 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                                 color: AppPalette.textSecondary,
                               ),
                             ),
+                            const Spacer(),
+                            GestureDetector(
+                              onTap: () => _bridge.openBatterySettings(),
+                              child: const Text(
+                                'Honor App Launch ⚙️',
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w600,
+                                  color: AppPalette.cyan,
+                                  decoration: TextDecoration.underline,
+                                ),
+                              ),
+                            ),
                           ],
                         ),
                         const SizedBox(height: 6),
@@ -1566,33 +1750,39 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                             final name = (app['name'] != null && app['name']!.isNotEmpty)
                                 ? app['name']!
                                 : (app['package'] ?? 'App');
-                            return Tooltip(
-                              message: app['package'] ?? '',
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
-                                decoration: BoxDecoration(
-                                  color: AppPalette.cardAlt,
-                                  borderRadius: BorderRadius.circular(6),
-                                  border: Border.all(color: c.alphaPct(0.35)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Icon(Icons.apps_rounded, size: 11, color: c),
-                                    const SizedBox(width: 4),
-                                    ConstrainedBox(
-                                      constraints: const BoxConstraints(maxWidth: 130),
-                                      child: Text(
-                                        name,
-                                        overflow: TextOverflow.ellipsis,
-                                        style: const TextStyle(
-                                          fontSize: 10.5,
-                                          fontWeight: FontWeight.w500,
-                                          color: AppPalette.textPrimary,
+                            return InkWell(
+                              onTap: () => _showDeepFreezeAppModal(app),
+                              borderRadius: BorderRadius.circular(6),
+                              child: Tooltip(
+                                message: '${app['package'] ?? ''} • Tap to Force Stop',
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3.5),
+                                  decoration: BoxDecoration(
+                                    color: AppPalette.cardAlt,
+                                    borderRadius: BorderRadius.circular(6),
+                                    border: Border.all(color: c.alphaPct(0.35)),
+                                  ),
+                                  child: Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      Icon(Icons.apps_rounded, size: 11, color: c),
+                                      const SizedBox(width: 4),
+                                      ConstrainedBox(
+                                        constraints: const BoxConstraints(maxWidth: 130),
+                                        child: Text(
+                                          name,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: const TextStyle(
+                                            fontSize: 10.5,
+                                            fontWeight: FontWeight.w500,
+                                            color: AppPalette.textPrimary,
+                                          ),
                                         ),
                                       ),
-                                    ),
-                                  ],
+                                      const SizedBox(width: 4),
+                                      const Icon(Icons.touch_app_rounded, size: 10, color: AppPalette.cyan),
+                                    ],
+                                  ),
                                 ),
                               ),
                             );
@@ -1696,6 +1886,94 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(minWidth: 30, minHeight: 30),
                     onPressed: () => _showUninstallAppDialog(app),
+                  ),
+                ],
+              ),
+            );
+          }),
+          // --- ANTI-DOOMSCROLLING PULSE BANNER ---
+          Builder(builder: (context) {
+            final socialMins = _data?.socialMinutesToday ?? 0;
+            final isHigh = (_data?.doomscrollingAlert == true) || socialMins >= 45;
+            return Container(
+              margin: const EdgeInsets.only(top: 8, bottom: 4),
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    (isHigh ? AppPalette.coral : AppPalette.violet).withOpacity(0.14),
+                    AppPalette.cardAlt,
+                  ],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: (isHigh ? AppPalette.coral : AppPalette.violet).withOpacity(0.4),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: (isHigh ? AppPalette.coral : AppPalette.violet).withOpacity(0.2),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Icon(
+                      isHigh ? Icons.warning_amber_rounded : Icons.shield_moon_rounded,
+                      color: isHigh ? AppPalette.coral : AppPalette.violet,
+                      size: 20,
+                    ),
+                  ),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Text(
+                              'Anti-Doomscrolling Pulse',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: AppPalette.textPrimary,
+                              ),
+                            ),
+                            const Spacer(),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: (isHigh ? AppPalette.coral : AppPalette.emerald).withOpacity(0.2),
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Text(
+                                isHigh ? 'HIGH ENGAGEMENT' : 'BALANCED',
+                                style: TextStyle(
+                                  fontSize: 9.5,
+                                  fontWeight: FontWeight.w800,
+                                  color: isHigh ? AppPalette.coral : AppPalette.emerald,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          isHigh
+                              ? '$socialMins mins on social feeds today. Continuous doomscrolling risk!'
+                              : '$socialMins mins on social media today. Healthy digital focus.',
+                          style: const TextStyle(fontSize: 11, color: AppPalette.textSecondary),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  IconButton(
+                    icon: const Icon(Icons.vibration_rounded, size: 20, color: AppPalette.cyan),
+                    tooltip: 'Detox Haptic Pulse',
+                    onPressed: _triggerDetoxPulse,
                   ),
                 ],
               ),

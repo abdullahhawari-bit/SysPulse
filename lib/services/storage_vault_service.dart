@@ -271,6 +271,14 @@ class ArchiveCompressionResult {
     if (saved < 1024 * 1024) return '${(saved / 1024).toStringAsFixed(1)} KB';
     return '${(saved / (1024 * 1024)).toStringAsFixed(1)} MB';
   }
+
+  int get partsCount {
+    const oneGb = 1024 * 1024 * 1024;
+    if (compressedBytes <= oneGb) return 1;
+    return (compressedBytes / oneGb).ceil();
+  }
+
+  bool get isMultiPart => partsCount > 1;
 }
 
 // ============================================================================
