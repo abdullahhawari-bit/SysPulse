@@ -953,163 +953,196 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
   Widget build(BuildContext context) {
     final allItems = _buildAllControlItems();
     final q = _searchQuery.toLowerCase();
+    final media = MediaQuery.of(context);
+    final clampedMedia = media.copyWith(
+      textScaler: media.textScaler.clamp(
+        minScaleFactor: 0.85,
+        maxScaleFactor: 1.05,
+      ),
+    );
 
-    return Scaffold(
-      backgroundColor: _bg,
-      appBar: AppBar(
+    return MediaQuery(
+      data: clampedMedia,
+      child: Scaffold(
         backgroundColor: _bg,
-        elevation: 0,
-        titleSpacing: 16,
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(colors: [_cyan, _violet]),
-                borderRadius: BorderRadius.circular(10),
+        appBar: AppBar(
+          backgroundColor: _bg,
+          elevation: 0,
+          titleSpacing: 0,
+          title: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(6),
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(colors: [_cyan, _violet]),
+                  borderRadius: BorderRadius.circular(9),
+                ),
+                child: const Icon(Icons.tune_rounded,
+                    color: Colors.white, size: 17),
               ),
-              child:
-                  const Icon(Icons.tune_rounded, color: Colors.white, size: 20),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'System Control Hub',
-                    style: TextStyle(
-                      fontSize: 15.5,
-                      fontWeight: FontWeight.w800,
-                      color: _textPrimary,
+              const SizedBox(width: 9),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      'System Control Hub',
+                      maxLines: 1,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: FontWeight.w800,
+                        color: _textPrimary,
+                      ),
                     ),
-                  ),
-                  Text(
-                    'Collapsible Accordion • $_deviceBrand',
-                    style:
-                        const TextStyle(fontSize: 11, color: _textSecondary),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ],
+                    Text(
+                      _deviceBrand,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        fontSize: 10.5,
+                        color: _textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
               ),
+            ],
+          ),
+          actions: [
+            IconButton(
+              tooltip: 'Refresh Live States',
+              onPressed: _refreshHubState,
+              icon: const Icon(Icons.refresh_rounded, color: _cyan, size: 20),
             ),
           ],
         ),
-        actions: [
-          TextButton.icon(
-            style: TextButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-            ),
-            onPressed: () {
-              setState(() {
-                if (_expandedGroups.length >= _groups.length) {
-                  _expandedGroups.clear();
-                } else {
-                  for (final g in _groups) {
-                    _expandedGroups.add(g.id);
-                  }
-                }
-              });
-            },
-            icon: Icon(
-              _expandedGroups.length >= _groups.length
-                  ? Icons.unfold_less_rounded
-                  : Icons.unfold_more_rounded,
-              size: 16,
-              color: _cyan,
-            ),
-            label: Text(
-              _expandedGroups.length >= _groups.length
-                  ? 'Collapse All'
-                  : 'Expand All',
-              style: const TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
+        body: _loading
+            ? const Center(child: CircularProgressIndicator(color: _cyan))
+            : RefreshIndicator(
                 color: _cyan,
-              ),
-            ),
-          ),
-          IconButton(
-            tooltip: 'Refresh Live States',
-            onPressed: _refreshHubState,
-            icon: const Icon(Icons.refresh_rounded, color: _cyan, size: 20),
-          ),
-        ],
-      ),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator(color: _cyan))
-          : RefreshIndicator(
-              color: _cyan,
-              backgroundColor: _cardAlt,
-              onRefresh: _refreshHubState,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(16, 6, 16, 36),
-                children: [
-                  // Search Bar
-                  _buildSearchBar(),
-                  const SizedBox(height: 14),
+                backgroundColor: _cardAlt,
+                onRefresh: _refreshHubState,
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(13, 6, 13, 36),
+                  children: [
+                    // Search Bar + Expand/Collapse All Row
+                    Row(
+                      children: [
+                        Expanded(child: _buildSearchBar()),
+                        const SizedBox(width: 8),
+                        InkWell(
+                          borderRadius: BorderRadius.circular(11),
+                          onTap: () {
+                            setState(() {
+                              if (_expandedGroups.length >= _groups.length) {
+                                _expandedGroups.clear();
+                              } else {
+                                for (final g in _groups) {
+                                  _expandedGroups.add(g.id);
+                                }
+                              }
+                            });
+                          },
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 10, vertical: 10),
+                            decoration: BoxDecoration(
+                              color: _card,
+                              borderRadius: BorderRadius.circular(11),
+                              border: Border.all(
+                                  color: _cyan.withOpacity(0.45)),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  _expandedGroups.length >= _groups.length
+                                      ? Icons.unfold_less_rounded
+                                      : Icons.unfold_more_rounded,
+                                  size: 15,
+                                  color: _cyan,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  _expandedGroups.length >= _groups.length
+                                      ? 'Collapse'
+                                      : 'Expand All',
+                                  style: const TextStyle(
+                                    fontSize: 10.5,
+                                    fontWeight: FontWeight.w800,
+                                    color: _cyan,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 12),
 
-                  // 10 Collapsible Main Category Rectangles
-                  ..._groups.map((grp) {
-                    if (grp.id == 'direct_controls') {
-                      if (!_matchesDirectControls(q)) {
-                        return const SizedBox.shrink();
+                    // 10 Collapsible Main Category Rectangles
+                    ..._groups.map((grp) {
+                      if (grp.id == 'direct_controls') {
+                        if (!_matchesDirectControls(q)) {
+                          return const SizedBox.shrink();
+                        }
+                        final isExpanded =
+                            q.isNotEmpty || _expandedGroups.contains(grp.id);
+                        return _buildDirectControlsAccordionGroup(
+                          grp,
+                          isExpanded: isExpanded,
+                        );
+                      } else {
+                        final grpItems = allItems
+                            .where((i) =>
+                                i.category == grp.id && _itemMatchesSearch(i, q))
+                            .toList();
+                        if (grpItems.isEmpty) {
+                          return const SizedBox.shrink();
+                        }
+                        final isExpanded =
+                            q.isNotEmpty || _expandedGroups.contains(grp.id);
+                        return _buildCategoryAccordionGroup(
+                          grp,
+                          grpItems,
+                          isExpanded: isExpanded,
+                          forceExpandSubItems: q.isNotEmpty,
+                        );
                       }
-                      final isExpanded =
-                          q.isNotEmpty || _expandedGroups.contains(grp.id);
-                      return _buildDirectControlsAccordionGroup(
-                        grp,
-                        isExpanded: isExpanded,
-                      );
-                    } else {
-                      final grpItems = allItems
-                          .where((i) =>
-                              i.category == grp.id && _itemMatchesSearch(i, q))
-                          .toList();
-                      if (grpItems.isEmpty) {
-                        return const SizedBox.shrink();
-                      }
-                      final isExpanded =
-                          q.isNotEmpty || _expandedGroups.contains(grp.id);
-                      return _buildCategoryAccordionGroup(
-                        grp,
-                        grpItems,
-                        isExpanded: isExpanded,
-                        forceExpandSubItems: q.isNotEmpty,
-                      );
-                    }
-                  }),
-                ],
+                    }),
+                  ],
+                ),
               ),
-            ),
+      ),
     );
   }
 
   Widget _buildSearchBar() {
     return TextField(
-      style: const TextStyle(fontSize: 13, color: _textPrimary),
+      style: const TextStyle(fontSize: 12, color: _textPrimary),
       decoration: InputDecoration(
         isDense: true,
         contentPadding:
-            const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        hintText:
-            'Search settings (e.g., Developer, Password, Wallpaper, Date, Honor)...',
-        hintStyle: const TextStyle(fontSize: 12, color: _textSecondary),
+            const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+        hintText: 'Search settings (Password, Developer, Honor)...',
+        hintStyle: const TextStyle(fontSize: 11, color: _textSecondary),
         prefixIcon:
-            const Icon(Icons.search_rounded, size: 20, color: _cyan),
+            const Icon(Icons.search_rounded, size: 18, color: _cyan),
+        prefixIconConstraints:
+            const BoxConstraints(minWidth: 34, minHeight: 34),
         filled: true,
         fillColor: _card,
         border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(11),
           borderSide: const BorderSide(color: _border),
         ),
         enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(11),
           borderSide: const BorderSide(color: _border),
         ),
         focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(11),
           borderSide: const BorderSide(color: _cyan, width: 1.4),
         ),
       ),
@@ -1128,76 +1161,76 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
   }) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(15),
+      borderRadius: BorderRadius.circular(14),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 180),
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 11),
         decoration: BoxDecoration(
           color: isExpanded ? group.color.withOpacity(0.14) : _card,
-          borderRadius: BorderRadius.circular(15),
+          borderRadius: BorderRadius.circular(14),
           border: Border.all(
             color: isExpanded ? group.color : _border,
-            width: isExpanded ? 1.8 : 1.2,
+            width: isExpanded ? 1.7 : 1.2,
           ),
         ),
         child: Row(
           children: [
-            // Number / Icon Box
+            // Number Box
             Container(
-              width: 34,
-              height: 34,
+              width: 28,
+              height: 28,
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: group.color.withOpacity(0.18),
-                borderRadius: BorderRadius.circular(9),
+                borderRadius: BorderRadius.circular(8),
                 border: Border.all(color: group.color.withOpacity(0.5)),
               ),
               child: Text(
                 group.numberTag,
                 style: TextStyle(
-                  fontSize: 12,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
                   color: group.color,
                 ),
               ),
             ),
-            const SizedBox(width: 11),
+            const SizedBox(width: 9),
             Expanded(
               child: Text(
                 group.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+                maxLines: 2,
                 style: const TextStyle(
-                  fontSize: 14,
+                  fontSize: 12.5,
                   fontWeight: FontWeight.w800,
                   color: _textPrimary,
+                  height: 1.22,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 6),
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
               decoration: BoxDecoration(
                 color: _cardAlt,
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(7),
                 border: Border.all(color: group.color.withOpacity(0.35)),
               ),
               child: Text(
-                '$itemCount ${group.badgeSuffix}',
+                '$itemCount items',
                 style: TextStyle(
-                  fontSize: 10,
+                  fontSize: 9.5,
                   fontWeight: FontWeight.w800,
                   color: group.color,
                 ),
               ),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: 4),
             Icon(
               isExpanded
                   ? Icons.keyboard_arrow_down_rounded
                   : Icons.chevron_right_rounded,
               color: isExpanded ? group.color : _textSecondary,
-              size: 22,
+              size: 20,
             ),
           ],
         ),
@@ -1206,14 +1239,14 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
   }
 
   // ==========================================================================
-  // GROUP 01: DIRECT IN-APP CONTROLS (Indented Sub-Rectangles with Live Pills)
+  // GROUP 01: DIRECT IN-APP CONTROLS (2-Tier Sub-Rectangles: Full Title + Pills)
   // ==========================================================================
   Widget _buildDirectControlsAccordionGroup(
     _HubGroupMeta group, {
     required bool isExpanded,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 11),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1234,38 +1267,44 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
           ),
           if (isExpanded)
             Padding(
-              padding: const EdgeInsets.only(left: 14, top: 8),
+              padding: const EdgeInsets.only(left: 10, top: 8),
               child: Container(
                 decoration: BoxDecoration(
                   border: Border(
                     left: BorderSide(color: group.color, width: 2.5),
                   ),
                 ),
-                padding: const EdgeInsets.only(left: 12),
+                padding: const EdgeInsets.only(left: 10),
                 child: Column(
                   children: [
                     // Sub-Rectangle 1: Flashlight (Hardware Torch)
                     _buildDirectSubRectangle(
                       title: 'Flashlight (Hardware Torch)',
+                      statusBadge: _isTorchOn ? 'ACTIVE' : 'OFF',
                       icon: _isTorchOn
                           ? Icons.flashlight_on_rounded
                           : Icons.flashlight_off_rounded,
                       accentColor: _isTorchOn ? _amber : _coral,
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
+                      controlsRow: Row(
                         children: [
-                          _buildActionPill(
-                            label: 'OFF',
-                            selected: !_isTorchOn,
-                            color: _coral,
-                            onTap: () => _runDirectControl('toggleTorch', false),
+                          Expanded(
+                            child: _buildActionPill(
+                              label: 'Turn OFF',
+                              selected: !_isTorchOn,
+                              color: _coral,
+                              onTap: () =>
+                                  _runDirectControl('toggleTorch', false),
+                            ),
                           ),
-                          const SizedBox(width: 6),
-                          _buildActionPill(
-                            label: 'ON',
-                            selected: _isTorchOn,
-                            color: _amber,
-                            onTap: () => _runDirectControl('toggleTorch', true),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildActionPill(
+                              label: 'Turn ON',
+                              selected: _isTorchOn,
+                              color: _amber,
+                              onTap: () =>
+                                  _runDirectControl('toggleTorch', true),
+                            ),
                           ),
                         ],
                       ),
@@ -1275,31 +1314,39 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
                     // Sub-Rectangle 2: Ringer Audio Mode
                     _buildDirectSubRectangle(
                       title: 'Ringer Audio Mode',
+                      statusBadge: _ringerMode.toUpperCase(),
                       icon: Icons.volume_up_rounded,
                       accentColor: _emerald,
-                      trailing: Wrap(
-                        spacing: 5,
+                      controlsRow: Row(
                         children: [
-                          _buildActionPill(
-                            label: 'Normal',
-                            selected: _ringerMode == 'normal',
-                            color: _emerald,
-                            onTap: () =>
-                                _runDirectControl('setRingerMode', 'normal'),
+                          Expanded(
+                            child: _buildActionPill(
+                              label: 'Normal',
+                              selected: _ringerMode == 'normal',
+                              color: _emerald,
+                              onTap: () =>
+                                  _runDirectControl('setRingerMode', 'normal'),
+                            ),
                           ),
-                          _buildActionPill(
-                            label: 'Vibrate',
-                            selected: _ringerMode == 'vibrate',
-                            color: _amber,
-                            onTap: () =>
-                                _runDirectControl('setRingerMode', 'vibrate'),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: _buildActionPill(
+                              label: 'Vibrate',
+                              selected: _ringerMode == 'vibrate',
+                              color: _amber,
+                              onTap: () =>
+                                  _runDirectControl('setRingerMode', 'vibrate'),
+                            ),
                           ),
-                          _buildActionPill(
-                            label: 'Silent',
-                            selected: _ringerMode == 'silent',
-                            color: _coral,
-                            onTap: () =>
-                                _runDirectControl('setRingerMode', 'silent'),
+                          const SizedBox(width: 6),
+                          Expanded(
+                            child: _buildActionPill(
+                              label: 'Silent',
+                              selected: _ringerMode == 'silent',
+                              color: _coral,
+                              onTap: () =>
+                                  _runDirectControl('setRingerMode', 'silent'),
+                            ),
                           ),
                         ],
                       ),
@@ -1308,8 +1355,9 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
 
                     // Sub-Rectangle 3: Screen Brightness Level
                     _buildDirectSubRectangle(
-                      title:
-                          'Screen Brightness (${_autoBrightness ? "Auto" : "$_brightnessPct%"})',
+                      title: 'Screen Brightness Level',
+                      statusBadge:
+                          _autoBrightness ? 'AUTO' : '$_brightnessPct%',
                       icon: Icons.brightness_6_rounded,
                       accentColor: _amber,
                       subtitleWidget: !_canWriteSettings
@@ -1318,9 +1366,9 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
                                   'write_settings_permission',
                                   'Modify System Settings'),
                               child: const Padding(
-                                padding: EdgeInsets.only(top: 3),
+                                padding: EdgeInsets.only(top: 4),
                                 child: Text(
-                                  'Tap to grant Modify System Settings permission ⚙️',
+                                  'Tap here to grant Modify System Settings permission',
                                   style: TextStyle(
                                     fontSize: 10.5,
                                     color: _amber,
@@ -1330,25 +1378,30 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
                               ),
                             )
                           : null,
-                      trailing: Wrap(
-                        spacing: 5,
+                      controlsRow: Row(
                         children: [
-                          _buildActionPill(
-                            label: 'Auto',
-                            selected: _autoBrightness,
-                            color: _amber,
-                            onTap: () =>
-                                _runDirectControl('setAutoBrightness', true),
-                          ),
-                          for (final pct in [25, 50, 100])
-                            _buildActionPill(
-                              label: '$pct%',
-                              selected: !_autoBrightness &&
-                                  (_brightnessPct - pct).abs() <= 14,
+                          Expanded(
+                            child: _buildActionPill(
+                              label: 'Auto',
+                              selected: _autoBrightness,
                               color: _amber,
                               onTap: () =>
-                                  _runDirectControl('setBrightness', pct),
+                                  _runDirectControl('setAutoBrightness', true),
                             ),
+                          ),
+                          for (final pct in [25, 50, 100]) ...[
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: _buildActionPill(
+                                label: '$pct%',
+                                selected: !_autoBrightness &&
+                                    (_brightnessPct - pct).abs() <= 14,
+                                color: _amber,
+                                onTap: () =>
+                                    _runDirectControl('setBrightness', pct),
+                              ),
+                            ),
+                          ],
                         ],
                       ),
                     ),
@@ -1357,23 +1410,27 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
                     // Sub-Rectangle 4: System RAM & Cache Trim
                     _buildDirectSubRectangle(
                       title: 'System RAM & Cache Trim',
+                      statusBadge: 'MEMORY',
                       icon: Icons.cleaning_services_rounded,
                       accentColor: _violet,
                       subtitleWidget: const Padding(
-                        padding: EdgeInsets.only(top: 2),
+                        padding: EdgeInsets.only(top: 3),
                         child: Text(
-                          'Frees cached memory (Recent Apps cards = OS history)',
+                          'Frees cached memory safely (Recent Apps cards = OS history)',
                           style: TextStyle(
-                            fontSize: 10,
+                            fontSize: 10.5,
                             color: _textSecondary,
                           ),
                         ),
                       ),
-                      trailing: _buildActionPill(
-                        label: 'Trim RAM ->',
-                        selected: true,
-                        color: _violet,
-                        onTap: () => _runDirectControl('boostSystemMemory'),
+                      controlsRow: SizedBox(
+                        width: double.infinity,
+                        child: _buildActionPill(
+                          label: 'Trim Cached System RAM  ->',
+                          selected: true,
+                          color: _violet,
+                          onTap: () => _runDirectControl('boostSystemMemory'),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 8),
@@ -1381,23 +1438,27 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
                     // Sub-Rectangle 5: Safe Charge Booster (Cool & Fast)
                     _buildDirectSubRectangle(
                       title: 'Safe Charge Booster (Cool & Fast)',
+                      statusBadge: '${_batteryWatts.toStringAsFixed(1)}W',
                       icon: Icons.bolt_rounded,
                       accentColor: _emerald,
                       subtitleWidget: Padding(
-                        padding: const EdgeInsets.only(top: 2),
+                        padding: const EdgeInsets.only(top: 3),
                         child: Text(
-                          '${_isCharging ? _chargingSource : "Ready"} • ${_batteryWatts.toStringAsFixed(1)}W • ${_batteryTempC.toStringAsFixed(1)}°C ($_batteryHealth $_batteryHealthScore%)',
+                          '${_isCharging ? _chargingSource : "Ready"} • ${_batteryTempC.toStringAsFixed(1)}°C • Health $_batteryHealth ($_batteryHealthScore%)',
                           style: const TextStyle(
-                            fontSize: 10,
+                            fontSize: 10.5,
                             color: _emerald,
                           ),
                         ),
                       ),
-                      trailing: _buildActionPill(
-                        label: 'Boost Charge ->',
-                        selected: true,
-                        color: _emerald,
-                        onTap: () => _runDirectControl('safeChargeBooster'),
+                      controlsRow: SizedBox(
+                        width: double.infinity,
+                        child: _buildActionPill(
+                          label: 'Activate Safe Charge Booster  ->',
+                          selected: true,
+                          color: _emerald,
+                          onTap: () => _runDirectControl('safeChargeBooster'),
+                        ),
                       ),
                     ),
                   ],
@@ -1413,38 +1474,61 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
     required String title,
     required IconData icon,
     required Color accentColor,
-    required Widget trailing,
+    required Widget controlsRow,
+    String? statusBadge,
     Widget? subtitleWidget,
   }) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
       decoration: BoxDecoration(
         color: _subCard,
         borderRadius: BorderRadius.circular(12),
         border: Border.all(color: _border),
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Icon(icon, size: 17, color: accentColor),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
+          Row(
+            children: [
+              Icon(icon, size: 16, color: accentColor),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
                   title,
+                  maxLines: 2,
                   style: const TextStyle(
-                    fontSize: 12.5,
+                    fontSize: 12,
                     fontWeight: FontWeight.w700,
                     color: _textPrimary,
+                    height: 1.2,
                   ),
                 ),
-                if (subtitleWidget != null) subtitleWidget,
+              ),
+              if (statusBadge != null) ...[
+                const SizedBox(width: 6),
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: accentColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(5),
+                    border: Border.all(color: accentColor.withOpacity(0.4)),
+                  ),
+                  child: Text(
+                    statusBadge,
+                    style: TextStyle(
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                      color: accentColor,
+                    ),
+                  ),
+                ),
               ],
-            ),
+            ],
           ),
-          const SizedBox(width: 8),
-          trailing,
+          if (subtitleWidget != null) subtitleWidget,
+          const SizedBox(height: 8),
+          controlsRow,
         ],
       ),
     );
@@ -1460,7 +1544,8 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
       onTap: onTap,
       borderRadius: BorderRadius.circular(8),
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
+        alignment: Alignment.center,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6.5),
         decoration: BoxDecoration(
           color: selected ? color.withOpacity(0.22) : _bg,
           borderRadius: BorderRadius.circular(8),
@@ -1471,6 +1556,9 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
         ),
         child: Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 10.5,
             fontWeight: FontWeight.w800,
@@ -1491,7 +1579,7 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
     required bool forceExpandSubItems,
   }) {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: 11),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
@@ -1512,14 +1600,14 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
           ),
           if (isExpanded)
             Padding(
-              padding: const EdgeInsets.only(left: 14, top: 8),
+              padding: const EdgeInsets.only(left: 10, top: 8),
               child: Container(
                 decoration: BoxDecoration(
                   border: Border(
                     left: BorderSide(color: group.color, width: 2.5),
                   ),
                 ),
-                padding: const EdgeInsets.only(left: 12),
+                padding: const EdgeInsets.only(left: 10),
                 child: Column(
                   children: items.map((item) {
                     final subExpanded = forceExpandSubItems ||
@@ -1579,27 +1667,27 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
             borderRadius: BorderRadius.circular(12),
             child: Padding(
               padding:
-                  const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                  const EdgeInsets.symmetric(horizontal: 11, vertical: 10),
               child: Row(
                 children: [
-                  Icon(item.icon, size: 17, color: item.color),
-                  const SizedBox(width: 9),
+                  Icon(item.icon, size: 16, color: item.color),
+                  const SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       item.title,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
+                      maxLines: 2,
                       style: const TextStyle(
-                        fontSize: 12.5,
+                        fontSize: 11.5,
                         fontWeight: FontWeight.w700,
                         color: _textPrimary,
+                        height: 1.25,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 6),
                   Container(
                     padding: const EdgeInsets.symmetric(
-                        horizontal: 7, vertical: 3),
+                        horizontal: 6, vertical: 2.5),
                     decoration: BoxDecoration(
                       color: statusColor.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(6),
@@ -1608,18 +1696,18 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
                     child: Text(
                       item.statusLabel,
                       style: TextStyle(
-                        fontSize: 10,
+                        fontSize: 9.5,
                         fontWeight: FontWeight.w800,
                         color: statusColor,
                       ),
                     ),
                   ),
-                  const SizedBox(width: 6),
+                  const SizedBox(width: 4),
                   Icon(
                     isSubExpanded
                         ? Icons.keyboard_arrow_down_rounded
                         : Icons.chevron_right_rounded,
-                    size: 18,
+                    size: 17,
                     color: isSubExpanded ? statusColor : _textSecondary,
                   ),
                 ],

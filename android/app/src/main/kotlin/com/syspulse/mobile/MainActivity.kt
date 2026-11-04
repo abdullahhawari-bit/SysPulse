@@ -217,6 +217,10 @@ class MainActivity : FlutterActivity() {
                     "activateSafeChargeBooster" -> runAsync(result) {
                         executeSafeChargeBooster()
                     }
+                    "openOwnAppSettings" -> {
+                        val ok = openAppDetailsSettings(packageName)
+                        result.success(ok)
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -295,6 +299,7 @@ class MainActivity : FlutterActivity() {
         return mapOf(
             "usageAccess" to hasUsageStatsPermission(),
             "callLog" to hasPermission(Manifest.permission.READ_CALL_LOG),
+            "sms" to hasPermission(Manifest.permission.READ_SMS),
             "phoneState" to hasPermission(Manifest.permission.READ_PHONE_STATE)
         )
     }
@@ -336,6 +341,9 @@ class MainActivity : FlutterActivity() {
         val missing = mutableListOf<String>()
         if (!hasPermission(Manifest.permission.READ_CALL_LOG)) {
             missing.add(Manifest.permission.READ_CALL_LOG)
+        }
+        if (!hasPermission(Manifest.permission.READ_SMS)) {
+            missing.add(Manifest.permission.READ_SMS)
         }
         if (!hasPermission(Manifest.permission.READ_PHONE_STATE)) {
             missing.add(Manifest.permission.READ_PHONE_STATE)
@@ -968,15 +976,32 @@ class MainActivity : FlutterActivity() {
     }
 
     // ========================================================================
-    // 5. CALL STATS (CallLog.Calls ContentResolver — Last 24 Hours)
+    // 5. CALL STATS (CallLog.Calls ContentResolver — Recent History)
     // ========================================================================
+
+    private fun normalizeCallType(rawType: Int, durationSec: Long): String {
+        return when (rawType) {
+            CallLog.Calls.INCOMING_TYPE,
+            CallLog.Calls.ANSWERED_EXTERNALLY_TYPE,
+            100 -> "incoming"
+            CallLog.Calls.OUTGOING_TYPE,
+            101 -> "outgoing"
+            CallLog.Calls.MISSED_TYPE,
+            CallLog.Calls.VOICEMAIL_TYPE,
+            102 -> "missed"
+            CallLog.Calls.REJECTED_TYPE,
+            CallLog.Calls.BLOCKED_TYPE,
+            10 -> "rejected"
+            else -> if (durationSec > 0L) "incoming" else "missed"
+        }
+    }
 
     private fun collectCallLogAnalytics(): Map<String, Any> {
         if (!hasPermission(Manifest.permission.READ_CALL_LOG)) {
             return mapOf("permissionGranted" to false)
         }
 
-        val sinceMillis = System.currentTimeMillis() - 24 * 3600_000L
+        val sinceMillis = System.currentTimeMillis() - 30L * 24L * 3600_000L
         var incoming = 0
         var outgoing = 0
         var missed = 0
@@ -985,50 +1010,58 @@ class MainActivity : FlutterActivity() {
         var answeredCalls = 0
         val hourBuckets = IntArray(24)
 
-        val projection = arrayOf(
-            CallLog.Calls.TYPE,
-            CallLog.Calls.DURATION,
-            CallLog.Calls.DATE
-        )
+        try {
+            val projection = arrayOf(
+                CallLog.Calls.TYPE,
+                CallLog.Calls.DURATION,
+                CallLog.Calls.DATE
+            )
 
-        contentResolver.query(
-            CallLog.Calls.CONTENT_URI,
-            projection,
-            "${CallLog.Calls.DATE} >= ?",
-            arrayOf(sinceMillis.toString()),
-            "${CallLog.Calls.DATE} DESC"
-        )?.use { cursor ->
-            val typeIdx = cursor.getColumnIndex(CallLog.Calls.TYPE)
-            val durIdx = cursor.getColumnIndex(CallLog.Calls.DURATION)
-            val dateIdx = cursor.getColumnIndex(CallLog.Calls.DATE)
+            contentResolver.query(
+                CallLog.Calls.CONTENT_URI,
+                projection,
+                null,
+                null,
+                "${CallLog.Calls.DATE} DESC"
+            )?.use { cursor ->
+                val typeIdx = cursor.getColumnIndex(CallLog.Calls.TYPE)
+                val durIdx = cursor.getColumnIndex(CallLog.Calls.DURATION)
+                val dateIdx = cursor.getColumnIndex(CallLog.Calls.DATE)
 
-            while (cursor.moveToNext()) {
-                val type = if (typeIdx >= 0) cursor.getInt(typeIdx) else 0
-                val dur = if (durIdx >= 0) max(0L, cursor.getLong(durIdx)) else 0L
-                val ts = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L
-
-                when (type) {
-                    CallLog.Calls.INCOMING_TYPE -> {
-                        incoming++
-                        totalDurationSec += dur
-                        if (dur > 0) answeredCalls++
+                var scanned = 0
+                while (cursor.moveToNext() && scanned < 300) {
+                    val ts = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L
+                    // Include all calls within 30 days, or at least the 50 most recent calls if older
+                    if (ts in 1 until sinceMillis && scanned >= 50) {
+                        break
                     }
-                    CallLog.Calls.OUTGOING_TYPE -> {
-                        outgoing++
-                        totalDurationSec += dur
-                        if (dur > 0) answeredCalls++
-                    }
-                    CallLog.Calls.MISSED_TYPE -> missed++
-                    CallLog.Calls.REJECTED_TYPE -> rejected++
-                }
+                    scanned++
+                    val rawType = if (typeIdx >= 0) cursor.getInt(typeIdx) else 0
+                    val dur = if (durIdx >= 0) max(0L, cursor.getLong(durIdx)) else 0L
 
-                if (ts > 0L) {
-                    val cal = Calendar.getInstance().apply { timeInMillis = ts }
-                    val hr = cal.get(Calendar.HOUR_OF_DAY).coerceIn(0, 23)
-                    hourBuckets[hr]++
+                    when (normalizeCallType(rawType, dur)) {
+                        "incoming" -> {
+                            incoming++
+                            totalDurationSec += dur
+                            if (dur > 0) answeredCalls++
+                        }
+                        "outgoing" -> {
+                            outgoing++
+                            totalDurationSec += dur
+                            if (dur > 0) answeredCalls++
+                        }
+                        "missed" -> missed++
+                        "rejected" -> rejected++
+                    }
+
+                    if (ts > 0L) {
+                        val cal = Calendar.getInstance().apply { timeInMillis = ts }
+                        val hr = cal.get(Calendar.HOUR_OF_DAY).coerceIn(0, 23)
+                        hourBuckets[hr]++
+                    }
                 }
             }
-        }
+        } catch (_: Exception) {}
 
         val avgSec = if (answeredCalls > 0) (totalDurationSec / answeredCalls).toInt() else 0
         val peakHour = hourBuckets.indices.maxByOrNull { hourBuckets[it] } ?: 14
@@ -1600,7 +1633,7 @@ class MainActivity : FlutterActivity() {
         val callsList = mutableListOf<Map<String, Any>>()
         val smsList = mutableListOf<Map<String, Any>>()
 
-        // 1. Query Calls (Incoming, Outgoing, Missed, Rejected)
+        // 1. Query Calls (Incoming, Outgoing, Missed, Rejected) — NO SQLite LIMIT in sortOrder (Android 11+ strict grammar)
         if (hasPermission(Manifest.permission.READ_CALL_LOG)) {
             try {
                 val projection = arrayOf(
@@ -1615,7 +1648,7 @@ class MainActivity : FlutterActivity() {
                     projection,
                     null,
                     null,
-                    "${CallLog.Calls.DATE} DESC LIMIT 100"
+                    "${CallLog.Calls.DATE} DESC"
                 )?.use { cursor ->
                     val nameIdx = cursor.getColumnIndex(CallLog.Calls.CACHED_NAME)
                     val numIdx = cursor.getColumnIndex(CallLog.Calls.NUMBER)
@@ -1623,20 +1656,14 @@ class MainActivity : FlutterActivity() {
                     val durIdx = cursor.getColumnIndex(CallLog.Calls.DURATION)
                     val dateIdx = cursor.getColumnIndex(CallLog.Calls.DATE)
 
-                    while (cursor.moveToNext()) {
+                    while (cursor.moveToNext() && callsList.size < 200) {
                         val name = if (nameIdx >= 0) cursor.getString(nameIdx) ?: "" else ""
                         val num = if (numIdx >= 0) cursor.getString(numIdx) ?: "" else ""
                         val rawType = if (typeIdx >= 0) cursor.getInt(typeIdx) else 0
-                        val dur = if (durIdx >= 0) cursor.getLong(durIdx) else 0L
+                        val dur = if (durIdx >= 0) max(0L, cursor.getLong(durIdx)) else 0L
                         val date = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L
 
-                        val typeStr = when (rawType) {
-                            CallLog.Calls.INCOMING_TYPE -> "incoming"
-                            CallLog.Calls.OUTGOING_TYPE -> "outgoing"
-                            CallLog.Calls.MISSED_TYPE -> "missed"
-                            CallLog.Calls.REJECTED_TYPE -> "rejected"
-                            else -> "other"
-                        }
+                        val typeStr = normalizeCallType(rawType, dur)
 
                         callsList.add(mapOf(
                             "name" to (if (name.isNotBlank()) name else (if (num.isNotBlank()) num else "Unknown Contact")),
@@ -1650,7 +1677,7 @@ class MainActivity : FlutterActivity() {
             } catch (_: Exception) {}
         }
 
-        // 2. Query SMS Messages (Inbox & Sent)
+        // 2. Query SMS Messages (Inbox & Sent) — NO SQLite LIMIT in sortOrder
         if (hasPermission(Manifest.permission.READ_SMS)) {
             try {
                 val uri = Telephony.Sms.CONTENT_URI
@@ -1665,14 +1692,14 @@ class MainActivity : FlutterActivity() {
                     projection,
                     null,
                     null,
-                    "${Telephony.Sms.DATE} DESC LIMIT 100"
+                    "${Telephony.Sms.DATE} DESC"
                 )?.use { cursor ->
                     val addrIdx = cursor.getColumnIndex(Telephony.Sms.ADDRESS)
                     val bodyIdx = cursor.getColumnIndex(Telephony.Sms.BODY)
                     val dateIdx = cursor.getColumnIndex(Telephony.Sms.DATE)
                     val typeIdx = cursor.getColumnIndex(Telephony.Sms.TYPE)
 
-                    while (cursor.moveToNext()) {
+                    while (cursor.moveToNext() && smsList.size < 200) {
                         val address = if (addrIdx >= 0) cursor.getString(addrIdx) ?: "" else ""
                         val body = if (bodyIdx >= 0) cursor.getString(bodyIdx) ?: "" else ""
                         val date = if (dateIdx >= 0) cursor.getLong(dateIdx) else 0L

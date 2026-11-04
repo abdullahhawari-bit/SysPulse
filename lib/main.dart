@@ -998,7 +998,18 @@ class SysPulseNativeBridge {
   Future<CallAnalyticsData> fetchCallLogStats() async {
     try {
       final m = await _channel.invokeMapMethod<String, dynamic>('getCallStats');
-      if (m != null && m['permissionGranted'] == true) {
+      if (m != null) {
+        if (m['permissionGranted'] != true) {
+          return const CallAnalyticsData(
+            incoming: 0,
+            outgoing: 0,
+            missed: 0,
+            rejected: 0,
+            totalTalkTime: Duration.zero,
+            avgDuration: Duration.zero,
+            peakWindow: 'Permission required',
+          );
+        }
         return CallAnalyticsData(
           incoming: (m['incoming'] as num?)?.toInt() ?? 0,
           outgoing: (m['outgoing'] as num?)?.toInt() ?? 0,
@@ -1136,6 +1147,16 @@ class SysPulseNativeBridge {
         'openSystemSettingTarget',
         {'targetKey': targetKey},
       );
+      return ok ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Opens SysPulse's own Android App Info page (Permissions & Restricted Settings).
+  Future<bool> openOwnAppSettings() async {
+    try {
+      final ok = await _channel.invokeMethod<bool>('openOwnAppSettings');
       return ok ?? false;
     } catch (_) {
       return false;
@@ -1996,22 +2017,42 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
   }) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(22),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             const Icon(Icons.security_rounded,
-                size: 40, color: AppPalette.amber),
-            const SizedBox(height: 12),
+                size: 38, color: AppPalette.amber),
+            const SizedBox(height: 10),
             Text(title,
                 style: AppStyles.cardTitle, textAlign: TextAlign.center),
             const SizedBox(height: 6),
             Text(desc, style: AppStyles.cardSub, textAlign: TextAlign.center),
-            const SizedBox(height: 16),
+            const SizedBox(height: 8),
+            const Text(
+              'Android 13/14 Tip: If the popup does not appear on a direct APK install, tap "Open App Settings" -> Permissions -> Allow Call Logs & SMS (if greyed out, tap top-right ⋮ -> Allow restricted settings first).',
+              style: TextStyle(
+                fontSize: 10.5,
+                color: AppPalette.textSecondary,
+                height: 1.35,
+              ),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 14),
             FilledButton.icon(
               onPressed: onGrant,
               icon: const Icon(Icons.check_circle_rounded, size: 16),
               label: const Text('Grant Telemetry Permission'),
+            ),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              onPressed: () => _bridge.openOwnAppSettings(),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AppPalette.cyan,
+                side: const BorderSide(color: AppPalette.cyan),
+              ),
+              icon: const Icon(Icons.settings_rounded, size: 16),
+              label: const Text('Open App Settings -> Permissions'),
             ),
           ],
         ),
@@ -2289,11 +2330,23 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Unified System Control Hub',
-                        style: AppStyles.cardTitle),
                     Text(
-                        'All phone settings in 9 groups: 1-click controls & step-by-step wizard',
-                        style: AppStyles.caption),
+                      'Unified System Control Hub',
+                      style: TextStyle(
+                        fontSize: 13.5,
+                        fontWeight: FontWeight.w800,
+                        color: AppPalette.textPrimary,
+                      ),
+                    ),
+                    SizedBox(height: 2),
+                    Text(
+                      'All phone settings in 10 accordion groups: 1-click controls & step-by-step wizard',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: AppPalette.textSecondary,
+                        height: 1.3,
+                      ),
+                    ),
                   ],
                 ),
               ),
@@ -3593,14 +3646,84 @@ class _MainDashboardScreenState extends State<MainDashboardScreen>
 
   // --- 5. CALL STATS ---
   Widget _buildCallStatsCard(CallAnalyticsData calls) {
+    final hasCallPerm = _data?.permissions.callLog ?? true;
     return _DashboardCard(
       title: 'Call Stats',
-      subtitle: 'Recent CallLog.Calls analytics • Last 24h',
+      subtitle: 'Recent CallLog.Calls analytics • Last 30 days',
       icon: Icons.call_rounded,
       iconColor: AppPalette.blue,
       trailing: Text('${calls.totalCalls} Calls', style: AppStyles.itemTitle),
       child: Column(
         children: [
+          if (!hasCallPerm) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(11),
+              decoration: BoxDecoration(
+                color: AppPalette.amber.alphaPct(0.12),
+                borderRadius: BorderRadius.circular(11),
+                border: Border.all(color: AppPalette.amber.alphaPct(0.45)),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Row(
+                    children: [
+                      Icon(Icons.lock_open_rounded,
+                          size: 16, color: AppPalette.amber),
+                      SizedBox(width: 7),
+                      Expanded(
+                        child: Text(
+                          'Call Log Permission Needed to Display Incoming & Outgoing Calls',
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
+                            color: AppPalette.textPrimary,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: FilledButton.tonalIcon(
+                          onPressed: _handleRequestRuntimePermissions,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: AppPalette.amber.alphaPct(0.22),
+                            foregroundColor: AppPalette.amber,
+                            visualDensity: VisualDensity.compact,
+                          ),
+                          icon: const Icon(Icons.check_circle_rounded, size: 15),
+                          label: const Text(
+                            'Allow Call Access',
+                            style: TextStyle(
+                                fontSize: 11, fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton(
+                        onPressed: () => _bridge.openOwnAppSettings(),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppPalette.cyan,
+                          side: BorderSide(color: AppPalette.cyan.alphaPct(0.5)),
+                          visualDensity: VisualDensity.compact,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                        ),
+                        child: const Text(
+                          'App Settings',
+                          style: TextStyle(
+                              fontSize: 11, fontWeight: FontWeight.w700),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
           const SizedBox(height: 14),
           Row(children: [
             SizedBox(
