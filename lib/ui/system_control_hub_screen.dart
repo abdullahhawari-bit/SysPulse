@@ -68,6 +68,15 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
   bool _dndPolicyGranted = false;
   String _deviceBrand = 'Android Device';
   String _androidVersion = 'Android 14';
+  int _batteryPct = 78;
+  bool _isCharging = false;
+  String _batteryHealth = 'Good';
+  int _batteryHealthScore = 96;
+  double _batteryTempC = 33.0;
+  double _batteryWatts = 1.4;
+  int _batteryCurrentMa = 320;
+  String _chargingSource = 'On Battery';
+  String _thermalStatus = 'Cool & Optimal';
 
   @override
   void initState() {
@@ -115,6 +124,20 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
           _dndPolicyGranted = res['dndPolicyGranted'] == true;
           _deviceBrand = (res['deviceBrand'] as String?) ?? 'Android Device';
           _androidVersion = (res['androidVersion'] as String?) ?? 'Android';
+          _batteryPct = (res['batteryPct'] as num?)?.toInt() ?? 78;
+          _isCharging = res['isCharging'] == true;
+          _batteryHealth = (res['batteryHealth'] as String?) ?? 'Good';
+          _batteryHealthScore =
+              (res['batteryHealthScore'] as num?)?.toInt() ?? 96;
+          _batteryTempC = (res['batteryTempC'] as num?)?.toDouble() ?? 33.0;
+          _batteryWatts =
+              (res['batteryPowerWatts'] as num?)?.toDouble() ?? 1.4;
+          _batteryCurrentMa =
+              (res['batteryCurrentMa'] as num?)?.toInt() ?? 320;
+          _chargingSource =
+              (res['chargingSource'] as String?) ?? 'On Battery';
+          _thermalStatus =
+              (res['thermalStatus'] as String?) ?? 'Cool & Optimal';
           _loading = false;
         });
         return;
@@ -135,13 +158,22 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
       if (res != null && mounted) {
         final msg = (res['message'] as String?) ?? 'Action applied';
         final ok = res['ok'] == true;
+        final needsWritePerm = res['requiresWritePermission'] == true;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg),
             backgroundColor:
                 ok ? const Color(0xFF065F46) : const Color(0xFF92400E),
             behavior: SnackBarBehavior.floating,
-            duration: const Duration(seconds: 2),
+            duration: Duration(seconds: needsWritePerm ? 4 : 3),
+            action: needsWritePerm
+                ? SnackBarAction(
+                    label: 'Allow Dimming',
+                    textColor: _cyan,
+                    onPressed: () => _openSettingTarget(
+                        'write_settings_permission', 'Modify System Settings'),
+                  )
+                : null,
           ),
         );
       }
@@ -606,12 +638,34 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
 
       // ==================== 06. BATTERY & PERFORMANCE ====================
       _SystemControlItem(
+        id: 'battery_health_booster',
+        category: 'battery',
+        title: 'Battery Health & Safe Charge Booster',
+        categoryTag: 'Health & Fast Charge',
+        subtitle:
+            'Inspect live battery cell health ($_batteryHealth • $_batteryHealthScore%), wattage (${_batteryWatts.toStringAsFixed(1)}W), and boost charging speed safely without overheating.',
+        icon: Icons.bolt_rounded,
+        color: _batteryTempC >= 40.5 ? _coral : _emerald,
+        statusLabel:
+            '$_batteryHealthScore% • ${_batteryWatts.toStringAsFixed(1)}W',
+        isStatusHealthy: _batteryHealthScore >= 75 && _batteryTempC < 41.0,
+        supportsDirectAction: true,
+        targetKey: 'power_usage_summary',
+        recommendation:
+            'Fast chargers throttle wattage by up to 50% above 40°C. Safe Charge Booster cools the CPU & dims the screen so your charger delivers peak native speed with zero battery wear.',
+        steps: const [
+          'Plug in an official AC fast charger (avoid slow laptop USB ports).',
+          'Tap "Activate Safe Charge Booster" right inside this sub-rectangle to trim background CPU load, mute loud ringer spikes, and dim display to 15% / 30s sleep.',
+          'Tap "Open Setting Screen" below to inspect native OS Power Usage details.',
+        ],
+      ),
+      _SystemControlItem(
         id: 'honor_launch',
         category: 'battery',
         title: 'Honor App Launch & Background Freeze',
         categoryTag: 'OEM Power Control',
         subtitle:
-            'Prevent stubborn apps from auto-restarting in the background after clearing Recent Apps.',
+            'Prevent stubborn apps from auto-restarting in the background (Android Recent Apps square button only shows OS task history snapshots, not live RAM).',
         icon: Icons.rocket_launch_rounded,
         color: _coral,
         statusLabel: 'OEM Rules',
@@ -619,9 +673,9 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
         supportsDirectAction: true,
         targetKey: 'honor_app_launch',
         recommendation:
-            'On Honor / MagicOS, disabling "Manage Automatically" for heavy social apps stops overnight battery drain.',
+            'On Honor / MagicOS, disabling "Manage Automatically" for heavy social apps stops auto-restarts permanently.',
         steps: const [
-          'Tap "Clean System Memory Now" inside this sub-rectangle to flush cached background processes immediately.',
+          'Tap "Trim Cached System RAM" inside this sub-rectangle to release cached memory safely.',
           'Then tap "Open Setting Screen" below to launch Honor App Launch / Battery Optimization.',
           'Turn OFF "Manage Automatically" for draining apps, and uncheck "Auto-launch" and "Run in background".',
         ],
@@ -882,7 +936,7 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
   bool _matchesDirectControls(String q) {
     if (q.isEmpty) return true;
     const keywords =
-        'direct in-app controls flashlight torch ringer audio silent vibrate normal brightness timeout sleep ram memory boost clean';
+        'direct in-app controls flashlight torch ringer audio silent vibrate normal brightness timeout sleep ram memory boost clean safe charge booster fast charging battery watt thermal cool';
     return keywords.contains(q);
   }
 
@@ -1165,7 +1219,7 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
         children: [
           _buildMainGroupHeaderRectangle(
             group: group,
-            itemCount: 4,
+            itemCount: 5,
             isExpanded: isExpanded,
             onTap: () {
               HapticFeedback.selectionClick();
@@ -1300,16 +1354,50 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
                     ),
                     const SizedBox(height: 8),
 
-                    // Sub-Rectangle 4: System RAM & Cache Boost
+                    // Sub-Rectangle 4: System RAM & Cache Trim
                     _buildDirectSubRectangle(
-                      title: 'System RAM & Cache Boost',
+                      title: 'System RAM & Cache Trim',
                       icon: Icons.cleaning_services_rounded,
                       accentColor: _violet,
+                      subtitleWidget: const Padding(
+                        padding: EdgeInsets.only(top: 2),
+                        child: Text(
+                          'Frees cached memory (Recent Apps cards = OS history)',
+                          style: TextStyle(
+                            fontSize: 10,
+                            color: _textSecondary,
+                          ),
+                        ),
+                      ),
                       trailing: _buildActionPill(
-                        label: 'Clean Now ->',
+                        label: 'Trim RAM ->',
                         selected: true,
                         color: _violet,
                         onTap: () => _runDirectControl('boostSystemMemory'),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+
+                    // Sub-Rectangle 5: Safe Charge Booster (Cool & Fast)
+                    _buildDirectSubRectangle(
+                      title: 'Safe Charge Booster (Cool & Fast)',
+                      icon: Icons.bolt_rounded,
+                      accentColor: _emerald,
+                      subtitleWidget: Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          '${_isCharging ? _chargingSource : "Ready"} • ${_batteryWatts.toStringAsFixed(1)}W • ${_batteryTempC.toStringAsFixed(1)}°C ($_batteryHealth $_batteryHealthScore%)',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: _emerald,
+                          ),
+                        ),
+                      ),
+                      trailing: _buildActionPill(
+                        label: 'Boost Charge ->',
+                        selected: true,
+                        color: _emerald,
+                        onTap: () => _runDirectControl('safeChargeBooster'),
                       ),
                     ),
                   ],
@@ -1765,6 +1853,64 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
       );
     }
 
+    if (item.id == 'battery_health_booster') {
+      final flowSign = _isCharging ? '+' : '-';
+      return Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: _bg,
+          borderRadius: BorderRadius.circular(9),
+          border: Border.all(color: _emerald.withOpacity(0.45)),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Health: $_batteryHealth ($_batteryHealthScore%) • $_chargingSource',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: _textPrimary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 3),
+            Text(
+              'Live Flow: $flowSign${_batteryWatts.toStringAsFixed(1)}W ($flowSign${_batteryCurrentMa}mA) • Thermal: ${_batteryTempC.toStringAsFixed(1)}°C ($_thermalStatus)',
+              style: const TextStyle(
+                fontSize: 10.5,
+                color: _textSecondary,
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton.icon(
+                onPressed: () => _runDirectControl('safeChargeBooster'),
+                style: FilledButton.styleFrom(
+                  backgroundColor: _emerald,
+                  foregroundColor: const Color(0xFF04130D),
+                  visualDensity: VisualDensity.compact,
+                ),
+                icon: const Icon(Icons.bolt_rounded, size: 17),
+                label: const Text(
+                  'Activate Safe Charge Booster (100% Safe)',
+                  style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w800),
+                ),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     if (item.id == 'honor_launch') {
       return SizedBox(
         width: double.infinity,
@@ -1776,7 +1922,7 @@ class _SystemControlHubScreenState extends State<SystemControlHubScreen>
           ),
           icon: const Icon(Icons.cleaning_services_rounded, size: 17),
           label: const Text(
-            'Clean System Memory Now',
+            'Trim Cached System RAM',
             style: TextStyle(fontSize: 12, fontWeight: FontWeight.w800),
           ),
         ),

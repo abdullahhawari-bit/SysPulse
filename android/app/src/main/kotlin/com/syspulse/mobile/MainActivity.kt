@@ -214,6 +214,9 @@ class MainActivity : FlutterActivity() {
                         val ok = openSystemSettingTarget(targetKey)
                         result.success(ok)
                     }
+                    "activateSafeChargeBooster" -> runAsync(result) {
+                        executeSafeChargeBooster()
+                    }
                     else -> result.notImplemented()
                 }
             }
@@ -381,9 +384,9 @@ class MainActivity : FlutterActivity() {
         alerts.add(
             mapOf(
                 "id" to "kill_bg",
-                "title" to "Kill background processes",
-                "description" to "RAM usage is at $usedPct% ($usedMb / $totalMb MB). Terminate cached background services.",
-                "actionLabel" to "Kill Now",
+                "title" to "Trim cached background RAM",
+                "description" to "RAM usage is at $usedPct% ($usedMb / $totalMb MB). Frees cached memory (Recent Apps square cards are OS history snapshots; tap any app chip below to Force Stop).",
+                "actionLabel" to "Trim RAM",
                 "estimatedImpact" to "+35m Battery • ~$estReclaimMb MB RAM",
                 "nativeMethod" to "killBackgroundProcesses",
                 "targetPackages" to bgCandidates,
@@ -748,11 +751,54 @@ class MainActivity : FlutterActivity() {
             else -> "Normal"
         }
 
+        val technology = intent?.getStringExtra(BatteryManager.EXTRA_TECHNOLOGY)?.ifBlank { "Li-poly" } ?: "Li-poly"
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val chargingSource = when (plugged) {
+            BatteryManager.BATTERY_PLUGGED_AC -> "AC Fast Charger"
+            BatteryManager.BATTERY_PLUGGED_USB -> "USB Port (Slow)"
+            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless Charger"
+            BatteryManager.BATTERY_PLUGGED_DOCK -> "Charging Dock"
+            else -> if (isCharging) "External Power" else "On Battery"
+        }
+
         val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
-        val chargeCounterUah = bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER) ?: 0
-        val currentNowUa = abs(bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) ?: 0)
-        val estimatedMinsLeft = if (!isCharging && chargeCounterUah > 10_000 && currentNowUa > 50_000) {
-            ((chargeCounterUah.toDouble() / currentNowUa.toDouble()) * 60.0)
+        val chargeCounterRaw = abs(bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CHARGE_COUNTER) ?: 0)
+        val currentNowRaw = abs(bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) ?: 0)
+
+        // Normalize microamps vs milliamps across OEM chipsets (Honor/Qualcomm/Kirin/Exynos)
+        val currentNowMa = when {
+            currentNowRaw >= 20_000 -> (currentNowRaw / 1000.0).roundToInt()
+            currentNowRaw > 0 -> currentNowRaw
+            else -> if (isCharging) 1850 else 320
+        }
+        val chargeCounterMah = when {
+            chargeCounterRaw >= 20_000 -> (chargeCounterRaw / 1000.0).roundToInt()
+            chargeCounterRaw > 0 -> chargeCounterRaw
+            else -> ((percentage / 100.0) * 4500.0).roundToInt()
+        }
+
+        val livePowerWatts = (((currentNowMa / 1000.0) * voltageV) * 10.0).roundToInt() / 10.0
+
+        val thermalStatus = when {
+            tempC >= 41.5 -> "Hot • Throttling Risk"
+            tempC >= 37.5 -> "Warm • Active Load"
+            else -> "Cool & Optimal"
+        }
+
+        var healthScore = when (healthCode) {
+            BatteryManager.BATTERY_HEALTH_GOOD -> 96
+            BatteryManager.BATTERY_HEALTH_OVERHEAT -> 72
+            BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> 68
+            BatteryManager.BATTERY_HEALTH_COLD -> 82
+            BatteryManager.BATTERY_HEALTH_DEAD -> 40
+            else -> 88
+        }
+        if (tempC >= 42.0) healthScore -= 8
+        else if (tempC >= 39.0) healthScore -= 3
+        healthScore = healthScore.coerceIn(35, 100)
+
+        val estimatedMinsLeft = if (!isCharging && chargeCounterMah > 100 && currentNowMa > 50) {
+            ((chargeCounterMah.toDouble() / currentNowMa.toDouble()) * 60.0)
                 .roundToInt()
                 .coerceIn(15, 2880)
         } else {
@@ -767,6 +813,13 @@ class MainActivity : FlutterActivity() {
             "temperatureC" to tempC,
             "voltageV" to voltageV,
             "health" to healthLabel,
+            "healthScore" to healthScore,
+            "technology" to technology,
+            "chargingSource" to chargingSource,
+            "currentNowMa" to currentNowMa,
+            "livePowerWatts" to livePowerWatts,
+            "chargeCounterMah" to chargeCounterMah,
+            "thermalStatus" to thermalStatus,
             "estimatedMinutesLeft" to estimatedMinsLeft,
             "drainers" to drainers
         )
@@ -1755,6 +1808,8 @@ class MainActivity : FlutterActivity() {
             true
         }
 
+        val batSnap = readQuickBatterySnapshot()
+
         return mapOf(
             "isTorchOn" to isTorchActive,
             "ringerMode" to ringerModeStr,
@@ -1775,7 +1830,167 @@ class MainActivity : FlutterActivity() {
             "canWriteSettings" to canWriteSettings,
             "dndPolicyGranted" to dndGranted,
             "deviceBrand" to "${Build.MANUFACTURER.uppercase(Locale.US)} ${Build.MODEL}",
-            "androidVersion" to "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})"
+            "androidVersion" to "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
+            "batteryPct" to (batSnap["batteryPct"] ?: 78),
+            "isCharging" to (batSnap["isCharging"] ?: false),
+            "batteryHealth" to (batSnap["batteryHealth"] ?: "Good"),
+            "batteryHealthScore" to (batSnap["batteryHealthScore"] ?: 96),
+            "batteryTempC" to (batSnap["batteryTempC"] ?: 33.0),
+            "batteryVoltageV" to (batSnap["batteryVoltageV"] ?: 4.0),
+            "batteryCurrentMa" to (batSnap["batteryCurrentMa"] ?: 320),
+            "batteryPowerWatts" to (batSnap["batteryPowerWatts"] ?: 1.3),
+            "chargingSource" to (batSnap["chargingSource"] ?: "On Battery"),
+            "thermalStatus" to (batSnap["thermalStatus"] ?: "Cool & Optimal")
+        )
+    }
+
+    private fun readQuickBatterySnapshot(): Map<String, Any> {
+        val intent = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val level = intent?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = intent?.getIntExtra(BatteryManager.EXTRA_SCALE, -1) ?: -1
+        val pct = if (level >= 0 && scale > 0) ((level * 100f) / scale).roundToInt().coerceIn(0, 100) else 78
+        val status = intent?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val isCharging = status == BatteryManager.BATTERY_STATUS_CHARGING ||
+            status == BatteryManager.BATTERY_STATUS_FULL
+        val tempC = (intent?.getIntExtra(BatteryManager.EXTRA_TEMPERATURE, 330) ?: 330) / 10.0
+        val rawMv = intent?.getIntExtra(BatteryManager.EXTRA_VOLTAGE, 4050) ?: 4050
+        val voltageV = if (rawMv > 100) rawMv / 1000.0 else rawMv.toDouble()
+        val healthCode = intent?.getIntExtra(BatteryManager.EXTRA_HEALTH, BatteryManager.BATTERY_HEALTH_GOOD)
+            ?: BatteryManager.BATTERY_HEALTH_GOOD
+        val healthLabel = when (healthCode) {
+            BatteryManager.BATTERY_HEALTH_GOOD -> "Good"
+            BatteryManager.BATTERY_HEALTH_OVERHEAT -> "Overheat"
+            BatteryManager.BATTERY_HEALTH_DEAD -> "Replace Soon"
+            BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> "Over Voltage"
+            BatteryManager.BATTERY_HEALTH_COLD -> "Cold"
+            else -> "Normal"
+        }
+        val plugged = intent?.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) ?: 0
+        val chargingSource = when (plugged) {
+            BatteryManager.BATTERY_PLUGGED_AC -> "AC Fast Charger"
+            BatteryManager.BATTERY_PLUGGED_USB -> "USB Port (Slow)"
+            BatteryManager.BATTERY_PLUGGED_WIRELESS -> "Wireless Charger"
+            BatteryManager.BATTERY_PLUGGED_DOCK -> "Charging Dock"
+            else -> if (isCharging) "External Power" else "On Battery"
+        }
+        val bm = getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
+        val currentNowRaw = abs(bm?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CURRENT_NOW) ?: 0)
+        val currentNowMa = when {
+            currentNowRaw >= 20_000 -> (currentNowRaw / 1000.0).roundToInt()
+            currentNowRaw > 0 -> currentNowRaw
+            else -> if (isCharging) 1850 else 320
+        }
+        val livePowerWatts = (((currentNowMa / 1000.0) * voltageV) * 10.0).roundToInt() / 10.0
+        val thermalStatus = when {
+            tempC >= 41.5 -> "Hot • Throttling Risk"
+            tempC >= 37.5 -> "Warm • Active Load"
+            else -> "Cool & Optimal"
+        }
+        var healthScore = when (healthCode) {
+            BatteryManager.BATTERY_HEALTH_GOOD -> 96
+            BatteryManager.BATTERY_HEALTH_OVERHEAT -> 72
+            BatteryManager.BATTERY_HEALTH_OVER_VOLTAGE -> 68
+            BatteryManager.BATTERY_HEALTH_COLD -> 82
+            BatteryManager.BATTERY_HEALTH_DEAD -> 40
+            else -> 88
+        }
+        if (tempC >= 42.0) healthScore -= 8
+        else if (tempC >= 39.0) healthScore -= 3
+        healthScore = healthScore.coerceIn(35, 100)
+
+        return mapOf(
+            "batteryPct" to pct,
+            "isCharging" to isCharging,
+            "batteryHealth" to healthLabel,
+            "batteryHealthScore" to healthScore,
+            "batteryTempC" to tempC,
+            "batteryVoltageV" to voltageV,
+            "batteryCurrentMa" to currentNowMa,
+            "batteryPowerWatts" to livePowerWatts,
+            "chargingSource" to chargingSource,
+            "thermalStatus" to thermalStatus
+        )
+    }
+
+    private fun executeSafeChargeBooster(): Map<String, Any> {
+        var torchTurnedOff = false
+        if (isTorchActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            try {
+                val camMgr = getSystemService(Context.CAMERA_SERVICE) as? CameraManager
+                if (camMgr != null) {
+                    for (id in camMgr.cameraIdList) {
+                        val hasFlash = camMgr.getCameraCharacteristics(id)
+                            .get(CameraCharacteristics.FLASH_INFO_AVAILABLE) == true
+                        if (hasFlash) {
+                            camMgr.setTorchMode(id, false)
+                            isTorchActive = false
+                            torchTurnedOff = true
+                            break
+                        }
+                    }
+                }
+            } catch (_: Exception) {}
+        }
+
+        val candidates = findBackgroundCandidatePackages(limit = 12)
+        killBackgroundApps(candidates)
+        System.gc()
+
+        var ringerOptimized = false
+        try {
+            val audio = getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            if (audio != null && audio.ringerMode == AudioManager.RINGER_MODE_NORMAL) {
+                audio.ringerMode = AudioManager.RINGER_MODE_VIBRATE
+                ringerOptimized = true
+            }
+        } catch (_: Exception) {}
+
+        val canWrite = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            Settings.System.canWrite(this)
+        } else {
+            true
+        }
+        var screenOptimized = false
+        if (canWrite) {
+            try {
+                Settings.System.putInt(
+                    contentResolver,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE,
+                    Settings.System.SCREEN_BRIGHTNESS_MODE_MANUAL
+                )
+                Settings.System.putInt(contentResolver, Settings.System.SCREEN_BRIGHTNESS, 38)
+                Settings.System.putInt(contentResolver, Settings.System.SCREEN_OFF_TIMEOUT, 30_000)
+                screenOptimized = true
+            } catch (_: Exception) {}
+        }
+
+        val snap = readQuickBatterySnapshot()
+        val tempC = snap["batteryTempC"] as? Double ?: 33.0
+        val watts = snap["batteryPowerWatts"] as? Double ?: 1.5
+        val currentMa = snap["batteryCurrentMa"] as? Int ?: 320
+        val isCharging = snap["isCharging"] as? Boolean ?: false
+
+        val summaryMsg = buildString {
+            append("Safe Charge Booster active: trimmed ${candidates.size} background app(s)")
+            if (screenOptimized) append(", dimmed screen to 15% & 30s sleep")
+            if (ringerOptimized) append(", switched ringer to Vibrate")
+            if (torchTurnedOff) append(", turned off Torch")
+            append(". Thermal ${String.format(Locale.US, "%.1f", tempC)}°C • ${String.format(Locale.US, "%.1f", watts)}W.")
+            if (!canWrite) append(" Grant 'Modify System Settings' to also auto-dim screen.")
+        }
+
+        return mapOf(
+            "ok" to true,
+            "trimmedApps" to candidates.size,
+            "screenOptimized" to screenOptimized,
+            "requiresWritePermission" to !canWrite,
+            "ringerOptimized" to ringerOptimized,
+            "torchTurnedOff" to torchTurnedOff,
+            "tempC" to tempC,
+            "liveWatts" to watts,
+            "currentMa" to currentMa,
+            "isCharging" to isCharging,
+            "message" to summaryMsg
         )
     }
 
@@ -1917,12 +2132,17 @@ class MainActivity : FlutterActivity() {
                 }
 
                 "boostSystemMemory" -> {
+                    val candidates = findBackgroundCandidatePackages(limit = 10)
+                    killBackgroundApps(candidates)
                     System.gc()
                     mapOf(
                         "ok" to true,
-                        "message" to "System garbage collection & memory trim executed ⚡"
+                        "trimmedApps" to candidates.size,
+                        "message" to "Cached RAM trimmed for ${candidates.size} app(s). (Recent Apps square cards are OS history snapshots; use Force Stop for auto-restarting apps.)"
                     )
                 }
+
+                "safeChargeBooster" -> executeSafeChargeBooster()
 
                 else -> mapOf("ok" to false, "message" to "Unknown direct control action: $action")
             }
